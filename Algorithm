@@ -13,13 +13,20 @@
    \maketitle
    \textbf{DON'T WORRY! EVERYTHING GONNA BE OK}\\
 It's better to start from the beginning and to see the things as easy as possible.\\
-In R[0..N-1] we store the propositions from the controllers from 0 to N-1. R[i] can be empty. In \emph{linearized} we store the policies already put in the C[0] to C[k] objects, the k grows while time goes by. All R, k, and \emph{linearized} are local for each contorller and are updated thanks to the information exchange with \emph{data} and \emph{control plane}.\\
+\textbf{What do we assume in this model?}\\ The SDN model of \emph{data} and \emph{control planes}: 
+\begin{enumerate}
+\item Distributed(multiple entities named \emph{controllers}), failure-prone(some \emph{controllers} may crash - stop functioning), asynchronous (eventually synchronous) \emph{data plane}
+\item static topologically \emph{data plane}
+\item transactional interface - ack/nack (implmented thanks to the OpenFlow)
+\item Consensus objects (exists thanks to the implementation of CAS functionality \cite[Herlihy and Shavit], implemented in the FlowTables using invisible for packets \emph{tags} (header field of the packet))
+\end{enumerate}
+\textbf{Remark:} all the implementations will be built in time. We start with a model which assumes already the existence of these functionalities and we focus more on the core algorithm. Gradually we will introduce how the exact implementations imapct the pseudocode.\\
+In R[0..N-1] we store the propositions from the controllers from 0 to N-1. R[i] can be empty. In \emph{linearized} we store the policies already put in the C[0] to C[k] objects, k grows. All R, k, and \emph{linearized} are local for each contorller and are updated thanks to the information exchange with \emph{data} and \emph{control plane}.\\
 \textbf{What does the controller when it receives a request from the client?}
 \begin{enumerate}
-\item it checks wheter $\pi$ propsed is not in conflict with what is installed
+\item it checks whether $\pi$ proposed is not in conflict with what is installed
 \item If it is, then reject($\pi$, \emph{reason}), where \emph{reason} may contain some information useful for the demanding application, but can be empty, too
-\item Else 
-\item send to all your $R_{updated}$, \emph{linearized} and k
+\item Else send to all your $R_{updated}$, \emph{linearized} and k
 \end{enumerate}
 %\begin{enumerate}
 %\item send to quroum ($\pi$, R[0..N-1],\emph{linearized}, k, ...)
@@ -33,22 +40,32 @@ In R[0..N-1] we store the propositions from the controllers from 0 to N-1. R[i] 
 %\end{enumerate}
 \textbf{What does the controller when it receives a request from it's peer?}
 \begin{enumerate}
-\item $linearized_{mine}$  update  with $linearized_{reçu}$ and k
-\item $R_{mine}[0..N-1] = R_{reçu}[0..N-1]$ - \emph{$ linearized_{mine} $} 
+\item $linearized_{mine}$  update  with $linearized_{received}$ and k (how to implement?)
+\item $R_{mine}[0..N-1] = R_{received}[0..N-1]$ - \emph{$ linearized_{mine} $} 
 \item if $\pi_{proposed}$ is not in conflict send \emph{ack} with R and \emph{linearized} and k
 \item else send \emph{nack} with R and \emph{linearized}
 \end{enumerate}
  \textbf{What does the leader on receiving a response from the quorum?}
 \begin{enumerate}
 \item If ack and if (++nbAck $>=$ \emph{fastQuorumSize}) Then 
-\item update \emph{linearized} set and R
+\item update \emph{linearized} set, R and k
 \item send to all R, \emph{linearized} and new status of $\pi$
-\item collect the repsponses from all, once it's done \emph{install($\pi$)} on the \emph{data plane}, send the batch of R[0..N-1] to C[k]
+\item collect the repsponses from all, once it's done \emph{install($\pi$)} on the \emph{data plane}, send the R[0..N-1] to C[k]
 \item Else send again to all R,k,\emph{linearized} with info I was nacked and wait for at least $\ceil{N/2}$ other controllers
 \item once it's received run lines 3. and 4.
 \item end if 
 \item expect the confirmation of the accomplished installation
 \end{enumerate}
+\textbf{Remark1:} In fact, after receiving a nack before having nbAck$>$= \emph{fastQuorumSize} we don't need to send put the line 5 and 6, because no matter what we will get as an answer, we will have to inform the quorum about the R vector. \\
+After collecting all the data we should inform the \emph{data plane} about the new installations to be performed.\\
+\textbf{Remark2:} in fact, we don't need the quorum to decide but only to collect the information, so the ack/nack received from there doesn't mean to much, only it gives us the information about what are the conflicting with $\pi$ policies, so we can use this information while choosing which policy to install. So this remark implies that \\
+\textbf{What does the leader with the collected information?}
+\begin{enumerate}
+\item send R to C[k]
+\item wait for the notification
+\end{enumerate}
+\textbf{Remark:} We the C[k] object should now decide what to do if it rejects some transatctions. Namely, it should either take care by itself of finding some C[k'] object which would be free and would retrun ack for the transaction, or it sends directly the nack to the leader$_\pi$ and it is the controller to send the R vector to C[k+1] until it receives an ack from some C[k']
+Once it is done we 
 How might work the \emph{consensus object C}? In this case?
 We use the atomic CAS implementation for each C[k], which means, once the batch or R[0..N-1] arrives to the C[k] in one atomic step it undertakes the CAS\\
 Once the batch,\emph{i.e.}, $R_\pi$ arrives: 
