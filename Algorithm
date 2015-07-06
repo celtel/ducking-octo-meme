@@ -13,14 +13,21 @@
    \maketitle
    \textbf{DON'T WORRY! EVERYTHING GONNA BE OK}\\
 It's better to start from the beginning and to see the things as easy as possible.\\
+\textbf{What's the main idea of these paper?}\\
+We try to solve the problem of installing consistent updates in the SDN paradigm. We demand that the each \emph{correct}(not conflicting with already installed policies) policy should be installed, and that each incorrect policy should be rejected.\\
+One thing to observe here is that we avoid here the case when no more non-conflicting policy can be installed. It's the case because the set of packages, paths, tags and priorites are finite. If we suppose that we can grow with, \emph{e.g.}, priorities or tags to the infinity, then, in practice, it would make the system infinitely slow and messages infinitely long. So as not to enter in too much details we can assume in our model that after some moment of \emph{contention} the system is reset to zero.\\
 \textbf{What do we assume in this model?}\\ The SDN model of \emph{data} and \emph{control planes}: 
 \begin{enumerate}
-\item Distributed(multiple entities named \emph{controllers}), failure-prone(some \emph{controllers} may crash - stop functioning), asynchronous (eventually synchronous) \emph{data plane}
+\item Distributed(multiple entities named \emph{controllers}), failure-prone(some \emph{controllers} may crash - stop functioning), asynchronous (eventually synchronous) \emph{control plane}
 \item static topologically \emph{data plane}
 \item transactional interface - ack/nack (implmented thanks to the OpenFlow)
-\item Consensus objects (exists thanks to the implementation of CAS functionality \cite[Herlihy and Shavit], implemented in the FlowTables using invisible for packets \emph{tags} (header field of the packet))
+\item Existence of \emph {consensus objects} (exists thanks to the implementation of CAS functionality \cite[Herlihy and Shavit], implemented in the FlowTables using invisible for packets \emph{tags} (header field of the packet))
+\item Message passing with \emph{fair-lossy} messages,\emph{i.e.}, a message sent infinetly many times is delivered infinitely many times. We assume here tacitly that the message may not arrive.
 \end{enumerate}
 \textbf{Remark:} all the implementations will be built in time. We start with a model which assumes already the existence of these functionalities and we focus more on the core algorithm. Gradually we will introduce how the exact implementations imapct the pseudocode.\\
+
+
+
 In R[0..N-1] we store the propositions from the controllers from 0 to N-1. R[i] can be empty. In \emph{linearized} we store the policies already put in the C[0] to C[k] objects, k grows. All R, k, and \emph{linearized} are local for each contorller and are updated thanks to the information exchange with \emph{data} and \emph{control plane}.\\
 \textbf{What does the controller when it receives a request from the client?}
 \begin{enumerate}
@@ -78,15 +85,10 @@ Once the vector,\emph{i.e.}, $R_\pi$ arrives:
 \textbf{The next question is how does the C[k] order the incoming updates in batches?}\\
  We need to introduce here a \emph{lexicographical} order: $(nb_{acc}, id_1 )<(nb_{acc'}, id_2)$  \textbf{iff}  $nb_{acc} < nb_{acc}'  $ \emph{or} $nb_{acc} = nb_{acc}'$ and $id_1<id_2$, where $nb_{acc}$ means the number of already installed policies by the controller with id = $id_k$.\\
  The feature each consensus object might possess: detect conflicts among the policies in the R vector it received(this can be done already by the controller on the \emph{control plane}), but as it's unaware neither of what is installed on the \emph{data plane} nor of the content of each C[k'] for k'$<$k.\\
- Once the leader$_\pi$ on the \emph{control plane} receives the notifications from C[0] to some C[k], it can easily count what should be installed. The roll-out of the installation: each contorller having gathered the notifications from C[0] to C[k], for some k, takes up the installation. Of each $\pi\in \cup_i C[i] $. Another \emph{remark} here is that during the message-passing the contorller can also exchange the knowledge about what is already installed on the \emph{data plane} (\textbf{Q? The OpenFlow provides the notificaiton about any change in switch status,\emph{i.e.}, installation or deletion/removal of a rule, so the knowledge in the CP is kept by this functionality}}) . The roll-out of the installation of the updates on the \emph{data plane} is to-be implemented(also here we can use CAS, I think). What's the picture now? All the contorllers try to install every composable policy on the \emph{data plane}. \textbf{Challenge:} diminish the number of installation attempts between CP and DP(to be continued and broaden, but the concept is already there). \\
+ Once the leader$_\pi$ on the \emph{control plane} receives the notifications from C[0] to some C[k], it can easily count what should be installed. The roll-out of the installation: each contorller having gathered the notifications from C[0] to C[k], for some k, takes up the installation. Of each $\pi\in \cup_i C[i] $. Another \emph{remark} here is that during the message-passing the contorller can also exchange the knowledge about what is already installed on the \emph{data plane} (\textbf{Q? The OpenFlow provides the notificaiton about any change in switch status,\emph{i.e.}, installation or deletion/removal of a rule, so the knowledge in the CP is kept by this functionality}) . The roll-out of the installation of the updates on the \emph{data plane} is to-be implemented(also here we can use CAS, I think). What's the picture now? All the contorllers try to install every composable policy on the \emph{data plane}. \textbf{Challenge:} diminish the number of installation attempts between CP and DP(to be continued and broaden, but the concept is already there). \\
  
  \textbf{How do we decide what to install?}\\
  Let $\pi_1<\pi_2<\pi_3<...<\pi_n$ will be sequence collected by a controller from C[0] up to some C[k]. We assume here silently that we always have that C[k]$<$C[k+1] for all k=0,1,... .
-And now $\pi_l$ is installed if it composes with what has been installed before, meaning there are now conflicts between $\pi_{i_1}\circ...\circ \pi_{i_j}$, where $\circ$ stands for the composition of the policies.\\
-\textbf{What's the roll-out of the installation?}\\
-Once a controller (no matter if it's the leader or not) collects the notifications from C[0] to C[k], it acts according to the knowledge it has. It means, it installs only not yet installed policies. \textbf{How it's implemented?}\\
-\begin{enumerate}
-\item Send to all switches concerned by the updates the transactions containing new rules 
-\item use CAS for 
-\end{enumerate}
+And now $\pi_l$ is installed if it composes with what has been installed before, meaning there are now conflicts between $\pi_{i_1}\circ...\circ \pi_{i_j}$, where $\circ$ stands for the composition of the policies.
+ 
 \end{document}
