@@ -2,6 +2,8 @@
 \usepackage{amssymb}
 \usepackage{amsmath}
 \usepackage{mathtools}
+\usepackage{amsfonts}
+\usepackage{amssymb}
 \usepackage{perpage} 
 \MakePerPage{footnote}
 \DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
@@ -33,7 +35,7 @@ In R[0..N-1] we store the propositions from the controllers from 0 to N-1. R[i] 
 \begin{enumerate}
 \item it checks whether $\pi$ proposed is not in conflict with what is installed
 \item If it is, then reject($\pi$, \emph{reason}), where \emph{reason} may contain some information useful for the demanding application, but can be empty, too
-\item Else send to all your $R_{updated}$, \emph{linearized} and k
+\item Else send to all(controllers) your $R_{updated}$, \emph{linearized} and k
 \end{enumerate}
 %\begin{enumerate}
 %\item send to quroum ($\pi$, R[0..N-1],\emph{linearized}, k, ...)
@@ -47,10 +49,10 @@ In R[0..N-1] we store the propositions from the controllers from 0 to N-1. R[i] 
 %\end{enumerate}
 \textbf{What does the controller when it receives a request from it's peer?}
 \begin{enumerate}
-\item $linearized_{mine}$  update  with $linearized_{received}$ and k (how to implement?)
+\item $linearized_{mine}$  update  with $linearized_{received}$ and k (how to implement?\footnote{$linearized_{mine}$ = $linearized_{received}$, should work because the linearized set is updated step-by-step, \emph{i.e.,} when a controller has received already infromaiton from all C[0] to C[l], for some l})
 \item $R_{mine}[0..N-1] = R_{received}[0..N-1]$ - \emph{$ linearized_{mine} $} 
-\item if $\pi_{proposed}$ is not in conflict send \emph{ack} with R and \emph{linearized} and k
-\item else send \emph{nack} with R and \emph{linearized}
+\item if $\pi_{proposed}$ is not in conflict send \emph{ack} with R,  \emph{linearized} and k
+\item else send \emph{nack} with R, \emph{linearized} and k
 \end{enumerate}
  \textbf{What does the leader on receiving a response from the quorum?}
 \begin{enumerate}
@@ -64,31 +66,33 @@ In R[0..N-1] we store the propositions from the controllers from 0 to N-1. R[i] 
 \item expect the confirmation of the accomplished installation
 \end{enumerate}
 \textbf{Remark1:} In fact, after receiving a nack before having nbAck$>$= \emph{fastQuorumSize} we don't need to carry out lines 5 and 6, because no matter what we will get as an answer, we will have to inform the quorum about the R vector. \\
-After collecting all the data we should inform the \emph{data plane} about the new installations to be performed.\\
-\textbf{Remark2:} in fact, we don't need the quorum to decide but only to collect the information, so the ack/nack received from there doesn't mean to much, only it gives us the information about what are the conflicting with $\pi$ policies, so we can use this information while choosing which policy to install. So this remark implies that we don't really need to wait for the whole quorum to respond. \textbf{But}, we can so as to collect more precise information from the quroum. Then the code in line 1 would be 1': If ++nbAswers $>$ \emph{expectedNumberOfAnswers} Then... \\
+After collecting all the data we should send them to data plane's \emph{consensus object}.\\
+\textbf{Remark2:} in fact, we don't need the quorum to decide but only to collect the information from it. So the ack/nack received from there doesn't mean too much, only it gives us more information about what are the policies conflicting with $\pi$. This knowledge is used while choosing which policy to install. So this remark implies that we don't really need to wait for the whole quorum to respond. \textbf{But}, we can do so in order to collect more complete knowledge about what has been requested. Then the code in line 1 would be 1': If ++nbAswers $>$ \emph{expectedNumberOfAnswers} Then...\\
+The other thing concerning this remark is that, maybe, there exists some \emph{optimalNumber} of messages to collect, such that, \emph{firstly} each C[k] contains more than m update policies with high probability, where m $\in \mathbb{N}$. Furthermore, we can develope this approach by: $\forall f:\mathbb{R}\rightarrow\mathbb{N}$, find the \emph{optimalValue} of messages to collect from the quorum to be able to decide whether wait for more or continue with another step in the algorithm(protocole). The function \emph{f} means the number of propositions/requests coming to the system from application. In fact, we can use just the $\mathbb{Q}_+$ numbers insted of real, because it's impossible for the computer to "understand" the real time. \\
+% Be able to reconstitue the whole system's working, with high proba, only having the number of messages in C[k], through the time...
 \textbf{What does the leader with the collected information?}
 \begin{enumerate}
 \item send R to C[k]
 \item wait for the notification
 \end{enumerate}
-\textbf{Remark:} Now we should decide what the C[k] do if it rejects a transatction. Namely, should either take care by itself of finding some C[k'] object which would be free and would retrun ack for the transaction, or it sends directly the nack to the leader$_\pi$ and it is the controller to send the R vector to C[k+1] until it receives an ack from some C[k']
+\textbf{Remark:} Now we should decide what does a C[k] if it rejects a transatction. Namely, should it either find by itself C[k'] object which would be free and would retrun ack for the transaction, or it sends directly the nack to the leader$_\pi$ and it is the controller's task to send the R vector to C[k+1] until it receives an ack from some C[k'].
 Once it is done we may continue with \emph{installation part}.\\
-How might work the \emph{consensus object C}? In this case?
+How might work the \emph{consensus object C} in this case?
 We use the atomic CAS implementation \cite[In-Band Synchronization] for each C[k], which means, once the vector R[0..N-1] arrives to the switch for C[k], in one atomic step, it executes the CAS method. \\
 Once the vector,\emph{i.e.}, $R_\pi$ arrives: 
 \begin{enumerate}
 \item if CAS($\emptyset$,R) Then send notification to the leader
-\item else switch takes care of finding the right switch with C[k'] free(we leave it in a \emph{black box})\footnotemark; once the switch receives the vector, and the CAS returns true it sends a notification to the leader$\pi$ and sends to all(any change on the switch is signalized to the \emph{control plane} thanks to the \emph{OpenFlow} 1.4. standards) the ordered policies.
+\item else switch takes care of finding the right switch with C[k'] free(we leave it in a \emph{black box})\footnotemark; once the switch receives the vector, and the CAS returns true it sends a notification to the leader$_\pi$ and sends to all(any change on the switch is signalized to the \emph{control plane} thanks to the \emph{OpenFlow} 1.4. standards) the ordered policies.
 \footnotetext{We can also just send the notification to the $leader_\pi$ that there is no place in C[k]}
 \end{enumerate}
-\textbf{Remark:} Try to find out the implementation of the above recipe using the OpenFlow 1.4., should be possible.\\
-\textbf{The next question is how does the C[k] order the incoming updates in batches?}\\
+\textbf{Remark:} Try to find out the implementation of the above recipe using the OpenFlow 1.4., should be possible. The first bullet is done in \cite{In-band synchronization}. For the second bullet, the implementation is unknown, yet. \\
+\textbf{The next question is how does the C[k] order the incoming vector of updates?}\\
  We need to introduce here a \emph{lexicographical} order: $(nb_{acc}, id_1 )<(nb_{acc'}, id_2)$  \textbf{iff}  $nb_{acc} < nb_{acc}'  $ \emph{or} $nb_{acc} = nb_{acc}'$ and $id_1<id_2$, where $nb_{acc}$ means the number of already installed policies by the controller with id = $id_k$.\\
- The feature each consensus object might possess: detect conflicts among the policies in the R vector it received(this can be done already by the controller on the \emph{control plane}), but as it's unaware neither of what is installed on the \emph{data plane} nor of the content of each C[k'] for k'$<$k.\\
- Once the leader$_\pi$ on the \emph{control plane} receives the notifications from C[0] to some C[k], it can easily count what should be installed. The roll-out of the installation: each contorller having gathered the notifications from C[0] to C[k], for some k, takes up the installation. Of each $\pi\in \cup_i C[i] $. Another \emph{remark} here is that during the message-passing the contorller can also exchange the knowledge about what is already installed on the \emph{data plane} (\textbf{Q? The OpenFlow provides the notificaiton about any change in switch status,\emph{i.e.}, installation or deletion/removal of a rule, so the knowledge in the CP is kept by this functionality}) . The roll-out of the installation of the updates on the \emph{data plane} is to-be implemented(also here we can use CAS, I think). What's the picture now? All the contorllers try to install every composable policy on the \emph{data plane}. \textbf{Challenge:} diminish the number of installation attempts between CP and DP(to be continued and broaden, but the concept is already there). \\
+% The feature each consensus object might possess: detect conflicts among the policies in the R vector it received(this can be done already by the controller on the \emph{control plane}), but as it's unaware neither of what is installed on the \emph{data plane} nor of the content of each C[k'] for k'$<$k.\\
+ Once the leader$_\pi$ on the \emph{control plane} receives the notifications from C[0] to some C[k], it can easily count what should be installed. The roll-out of the installation: each contorller having gathered the notifications from C[0] to C[k], for some k, takes up the installation of each $\pi\in \cup_i C[i] $. Another \emph{remark} here is that during the message-passing the contorller can also exchange the knowledge about what is already installed on the \emph{data plane} (\textbf{Q? The OpenFlow provides the notificaiton about any change in switch status,\emph{i.e.}, installation or deletion/removal of a rule, so the knowledge in the CP is kept by this functionality}) . The roll-out of the installation of the updates on the \emph{data plane} is to-be implemented(also here we can use CAS, I think). What's the picture now? All the contorllers try to install every composable policy on the \emph{data plane}. \textbf{Challenge:} diminish the number of installation attempts between CP and DP(to be continued and broaden, but the concept of solution is already there). \\
  
  \textbf{How do we decide what to install?}\\
- Let $\pi_1<\pi_2<\pi_3<...<\pi_n$ will be sequence collected by a controller from C[0] up to some C[k]. We assume here silently that we always have that C[k]$<$C[k+1] for all k=0,1,... .
+ Let $\pi_1<\pi_2<\pi_3<...<\pi_n$ will be sequence collected by a controller from C[0] up to some C[k]. We assume here silently that always C[k]$<$C[k+1] for all k=0,1,... .
 And now $\pi_l$ is installed if it composes with what has been installed before, meaning there are now conflicts between $\pi_{i_1}\circ...\circ \pi_{i_j}$, where $\circ$ stands for the composition of the policies.
  
 \end{document}
