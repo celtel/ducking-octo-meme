@@ -93,6 +93,15 @@ Once the vector,\emph{i.e.}, $R_\pi$ arrives:
  
  \textbf{How do we decide what to install?}\\
  Let $\pi_1<\pi_2<\pi_3<...<\pi_n$ will be sequence collected by a controller from C[0] up to some C[k]. We assume here silently that always C[k]$<$C[k+1] for all k=0,1,... .
-And now $\pi_l$ is installed if it composes with what has been installed before, meaning there are now conflicts between $\pi_{i_1}\circ...\circ \pi_{i_j}$, where $\circ$ stands for the composition of the policies.
+And now $\pi_l$ is installed if it composes with what has been installed before, meaning there are now conflicts between $\pi_{i_1}\circ...\circ \pi_{i_j}$, where $\circ$ stands for the composition of the policies.\\
+\textbf{How is the installation carried out?}\\
+Once a controller has gathered the responses from C[0] to C[k], and also it knows from the \emph{quroum} that  $\pi_{i_1}\circ...\circ \pi_{i_j}$ is installed it does the following:
+\begin{enumerate}
+\item check the k: $\pi_{i_j}\in$ C[k]
+\item for each $\pi>\pi_{i_j}$
+\item for each switch S: $\pi$ adds some rules on S do
+\item if CAS($\emptyset,$\emph{Rules}) then continue installation
+\item else stop installing $\pi$ and start installing the next $\pi'>\pi$
+\end{enumerate}
  
 \end{document}
