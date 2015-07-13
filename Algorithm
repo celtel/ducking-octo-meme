@@ -9,11 +9,40 @@
 \DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
 
 \title{Paxos-like implementions in SDN transactions}
-\author{John Smith}
-\date{Aprilis 2015}
+\author{Jan Celmer}
+\date{\today}
 \begin{document}
    \maketitle
-   \textbf{DON'T WORRY! EVERYTHING GONNA BE OK}\\
+ \textbf{Problem statement:} The main goal of this paper is to achieve more parallelism in SDN paradigm when installing new updates, and maintaining the correctness of the system,\emph{i.e.}, no conflicting update will be installed. The improvement will concern both message-passing between controllers in \emph{control plane}, and time. Thus, we include the design of a convenient protocol satisfying all above properties. 
+\part*{Introduction}    
+     Our work bases mainly on two articles \cite{CKLS15} and \cite{In-band Synchronization}. We are going to obtain all the results, firstly, by adding slight changes to the model in \cite{CKLS15} and secondly, by using the adapted version of Universal Construction abstract \cite{Herlihy:2008:AMP:1734069}.
+    In order to achieve more parallelism in SDN control plane for transactional network updates we will relax some constraints concerning the adopted model in \cite{CKLS15}.Furthermore, keeping the interface of  \emph{ReuseTag} algorithm, will help us to maintain the \emph{tag} number low. %modify its interface, if needed, pending question
+Providing the main algorithm's interface for \emph{message-passing} and \emph{installation} part, we will also incorporate the \emph{ReuseTag's} interface as an optimisation. The proofs of corectness and other desired propoerties like: sequenstial comositionality of histories, termination(comment: maybe some other which will appear later),  will be done at the end of this paper.
+The \emph{Universal construction} proposed originally by \cite{Herlihy:2008:AMP:1734069}  provides, as the author says, a "\emph{wait-free,}\footnote{any method called by an object is performed in finite number of steps} linearizable\footnote{seen as executed one-after-another} implementation of any concurent object". In our case we adopt this construction so as to be able to ,\emph{firstly}, to guarantee during the \emph{message-passing} phase each proposed policy will be eventually considered by some consenus object. \emph{Secondly,} we ensure the sequential compositionlaity of policies, \emph{i.e.}, an algorithm solving a so-called CPC problem \cite{CKLS15}, of \emph{correct composition of concurrent policy updates}. The proof will be presented in the last part. % This paper doesn't have to be quoted. Rather the one with EPaxos and the doucmentation with proofs
+    % introduce a partial order to deal with the incoming updates. Thus not    
+ 
+    \part*{Definitions of the Model} 
+\subparagraph{Sketch of SDN} The SDN paradigm is quite a new idea of network's architecture enabling the following functionalities: it decouples the management of the system from the switches, logically centralizes the operations in "network state" and enables innovation of network applications.
+Our model of SDN is made of two different layers. First one, \emph{control plane} 
+is an asynchronous, fail-prone distributed system of controllers, responsible for receving requests from the clients(applications) and deciding between themselves witch of the proposed update should take place. The decision is made thanks to the \emph{consensus}. The second layer called \emph{data plane} consists of switches, responsible for applying the operations  to the packets  according the rules they possess in \emph{flow tables}. 
+\subparagraph{Motivation of the model}     
+ \textbf{Inference } After stating some basics. We are introducing some changes to the model. 
+    Two operations $op_1$ 
+    and $op_2$ will
+     \emph{interfere} if the output from
+      $op_1 \circ op_{2} \neq op_{2}\circ op_1.$ This means that the outside observer is unable to preceive the difference in both cases. By operation, in this particular case, we would mean the installation of different polices on switches. As the switches on which$\pi_1 and \pi_2 $ are installed do not overlap, it seems natural to see it in this way. \\
+       \textbf{Histories} Two histories H and H' are \emph{equivalent} if $\exists \sigma\in \Sigma_{n}: \sigma(H) $ does not interfere with H, and H and H' are equivalent in the sense of \cite{CKLS15}.\\   
+    %TO be completed
+    We say that two paths aren't \emph{conflicting} if one of the following situations is satisfied:
+    \begin{enumerate}
+    \item \emph{$path_1$} $\cap$ \emph{$path_2$} = $\emptyset$
+    \item $\exists i,j:path_1(i) = path_2(j) $ and $path_1$(end)=$path_2$(end) which means that the paths cross but they have the same endpoint, so we don't care about the trace difference, but we are happy that our packet will finally reach the desired endpoint.
+    \end{enumerate}
+    The list above is exhaustive, because it covers all the situations then there are some sequence of common swithes used by both packets, or that they cross many times, but finally reach the same port. Otherwise we say that two paths \emph{conflict}.\\
+    We say that two policies $\pi_1$ and
+     $\pi_2$ \emph{conflict} if
+     \emph{dom($\pi_1$)} $\cap$ \emph{dom($\pi$)} $\neq \emptyset$ \underline{and} pr($\pi_1$)=pr($\pi_2$) \underline{and} their paths conflict.
+\\   
 It's better to start from the beginning and to see the things as easy as possible.\\
 \textbf{What's the main idea of these paper?}\\
 We try to solve the problem of installing consistent updates in the SDN paradigm. We demand that the each \emph{correct}(not conflicting with already installed policies) policy should be installed, and that each incorrect policy should be rejected.\\
@@ -23,14 +52,20 @@ One thing to observe here is that we avoid here the case when no more non-confli
 \item Distributed(multiple entities named \emph{controllers}), failure-prone(some \emph{controllers} may crash - stop functioning), asynchronous (eventually synchronous) \emph{control plane}
 \item static topologically \emph{data plane}
 \item transactional interface - ack/nack (implmented thanks to the OpenFlow)
-\item Existence of \emph {consensus objects} (exists thanks to the implementation of CAS functionality \cite[Herlihy and Shavit], implemented in the FlowTables using invisible for packets \emph{tags} (header field of the packet))
+\item Existence of \emph {consensus objects} (exists thanks to the implementation of CAS functionality \cite{Herlihy:2008:AMP:1734069}, implemented in the FlowTables using invisible for packets \emph{tags} (header field of the packet))
 \item Message passing with \emph{fair-lossy} messages,\emph{i.e.}, a message sent infinetly many times is delivered infinitely many times. We assume here tacitly that the message may not arrive.
 \end{enumerate}
 \textbf{Remark:} all the implementations will be built in time. We start with a model which assumes already the existence of these functionalities and we focus more on the core algorithm. Gradually we will introduce how the exact implementations imapct the pseudocode.\\
 
-
-
-In R[0..N-1] we store the propositions from the controllers from 0 to N-1. R[i] can be empty. In \emph{linearized} we store the policies already put in the C[0] to C[k] objects, k grows. All R, k, and \emph{linearized} are local for each contorller and are updated thanks to the information exchange with \emph{data} and \emph{control plane}.\\
+\part*{Algorithms}
+At the begining we provide a short description of what are the objecs a contorller uses in it's local memory.
+\begin{enumerate}
+\item R is a list containing not yet linearized requests
+\item \emph{linearized} is a list containing already linearized requests
+\item k in a natural saying ot which concurrent object's instance + 1 should the contorller send R
+\item maby some other \emph{thing} like a local history
+\end{enumerate}
+The above objects are updated thanks to the information exchange with \emph{data} and \emph{control plane}.\\
 \textbf{What does the controller when it receives a request from the client?}
 \begin{enumerate}
 \item it checks whether $\pi$ proposed is not in conflict with what is installed
@@ -47,25 +82,31 @@ In R[0..N-1] we store the propositions from the controllers from 0 to N-1. R[i] 
 %\item linearized = linearized $\cup$ {all the C[k] we didin't know up to the k we have received now}
 %\item Else 
 %\end{enumerate}
+Let's describe an intuition behind what will be presented. Each contoller only collects a messages coming from the \emph{control} and \emph{data planes}, and stores them in local memory. Once the applications calls, it becomes more "active",\emph{i.e.}, firstly, broadcasts it's request on the \emph{control plane} and then sends its list R to some \emph{consensus object} on a \emph{data plane}. Second phase,\emph{i.e., installation's} outline is the following: once a \emph{consensus object's} instance has decided on a common agreement, thanks to the \emph{OpenFlow 1.4.}, a switch (containing this \emph{consensus object}) changing a state\footnote{\emph{i.e.,} when a rule either added or deleted.} informs the  \emph{control plane} about modifications. Thanks to this the installation can take place as the leader\footnote{the controller solicitted by an application}. Once it finishes installing the update it acknowledges the application and \emph{control plane}.
+As it comes to the \emph{data plane}, it mainly receives the messages from controllers and responds with an adequate notification. The only thing it takes care, that is more complicated, is when a controller sends a transaction with a demand for a \emph{consensus object}, in case of rejection, it finds the next free instance.\\
+What broadcast do we need here? It should have the following properties, inspired by \cite{Guerraoui:2010:IRD:1951643}
+\begin{enumerate}
+\item \emph{fair-lossy}: message sent infinitely times by correct $p_i$ to $p_j $, is delivered infinitely many times.
+\item \emph{no creation} if message m is delivered to some process $p_i$ then it was previously broadcast by some $p_j$
+\end{enumerate}
+\textbf{Also we want to guarantee that} each time the process crashes before broadcasting to all the message the application will be informed about it and will resend a request to other controller. \\ 
 \textbf{What does the controller when it receives a request from it's peer?}
 \begin{enumerate}
-\item $linearized_{mine}$  update  with $linearized_{received}$ and k (how to implement?\footnote{$linearized_{mine}$ = $linearized_{received}$, should work because the linearized set is updated step-by-step, \emph{i.e.,} when a controller has received already infromaiton from all C[0] to C[l], for some l})
-\item $R_{mine}[0..N-1] = R_{received}[0..N-1]$ - \emph{$ linearized_{mine} $} 
-\item if $\pi_{proposed}$ is not in conflict send \emph{ack} with R,  \emph{linearized} and k
-\item else send \emph{nack} with R, \emph{linearized} and k
+\item $linearized_{mine}$  update  with $linearized_{received}$ and k (how to implement?\footnote{$linearized_{mine}$ = $linearized_{received}$, should work because the linearized set is updated step-by-step, \emph{i.e.,} when a controller has received already information from all C[0] to C[l], for some l})
+\item update $R_{mine}$ with $ R_{received}$, the same with \emph{linearized} and k
 \end{enumerate}
- \textbf{What does the leader on receiving a response from the quorum?}
-\begin{enumerate}
-\item If ack and if (++nbAck $>=$ \emph{fastQuorumSize}) Then 
-\item update \emph{linearized} set, R and k
-\item send to all R, \emph{linearized} and new status of $\pi$
-\item collect the repsponses from all, once it's done \emph{install($\pi$)} on the \emph{data plane}, send the R[0..N-1] to C[k]
-\item Else send again to all R,k,\emph{linearized} with info I was nacked and wait for at least $\ceil{N/2}$ other controllers
-\item once it's received run lines 3. and 4.
-\item end if 
-\item expect the confirmation of the accomplished installation
-\end{enumerate}
-\textbf{Remark1:} In fact, after receiving a nack before having nbAck$>$= \emph{fastQuorumSize} we don't need to carry out lines 5 and 6, because no matter what we will get as an answer, we will have to inform the quorum about the R vector. \\
+% \textbf{What does the leader on receiving a response from the quorum?}
+%\begin{enumerate}
+%\item If ack and if (++nbAck $>=$ %\emph{fastQuorumSize}) Then 
+%\item update \emph{linearized} set, R and k
+%\item send to all R, \emph{linearized} and new status of $\pi$
+%\item collect the repsponses from all, once it's done \emph{install($\pi$)} on the \emph{data plane}, send the R[0..N-1] to C[k]
+%\item Else send again to all R,k,\emph{linearized} with info I was nacked and wait for at least $\ceil{N/2}$ other controllers
+%\item once it's received run lines 3. and 4.
+%\item end if 
+%\item expect the confirmation of the accomplished installation
+%\end{enumerate}
+%\textbf{Remark1:} In fact, after receiving a nack before having nbAck$>$= \emph{fastQuorumSize} we don't need to carry out lines 5 and 6, because no matter what we will get as an answer, we will have to inform the quorum about the R vector. \\
 After collecting all the data we should send them to data plane's \emph{consensus object}.\\
 \textbf{Remark2:} in fact, we don't need the quorum to decide but only to collect the information from it. So the ack/nack received from there doesn't mean too much, only it gives us more information about what are the policies conflicting with $\pi$. This knowledge is used while choosing which policy to install. So this remark implies that we don't really need to wait for the whole quorum to respond. \textbf{But}, we can do so in order to collect more complete knowledge about what has been requested. Then the code in line 1 would be 1': If ++nbAswers $>$ \emph{expectedNumberOfAnswers} Then...\\
 The other thing concerning this remark is that, maybe, there exists some \emph{optimalNumber} of messages to collect, such that, \emph{firstly} each C[k] contains more than m update policies with high probability, where m $\in \mathbb{N}$. Furthermore, we can develope this approach by: $\forall f:\mathbb{R}\rightarrow\mathbb{N}$, find the \emph{optimalValue} of messages to collect from the quorum to be able to decide whether wait for more or continue with another step in the algorithm(protocole). The function \emph{f} means the number of propositions/requests coming to the system from application. In fact, we can use just the $\mathbb{Q}_+$ numbers insted of real, because it's impossible for the computer to "understand" the real time. \\
@@ -103,5 +144,8 @@ Once a controller has gathered the responses from C[0] to C[k], and also it know
 \item if CAS($\emptyset,$\emph{Rules}) then continue installation
 \item else stop installing $\pi$ and start installing the next $\pi'>\pi$
 \end{enumerate}
- 
+
+\bibliographystyle{plain}
+\bibliography{bibtex}
+
 \end{document}
