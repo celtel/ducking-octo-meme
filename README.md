@@ -6,7 +6,10 @@
 \usepackage{amssymb}
 \usepackage{perpage}
 %\usepackage{fullpage}
- 
+
+\usepackage{algorithm}% http://ctan.org/pkg/algorithm
+\usepackage{algpseudocode}% http://ctan.org/pkg/algorithmicx
+
 \MakePerPage{footnote}
 \DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
 
@@ -17,8 +20,8 @@
 \maketitle
 
 \subsection*{Abstract} Software-Defined Networking (SDN) is a new design of network architecture. The key idea is to separate  the network management \emph{control plane} from the switches, \emph{data plane}, which take care of the delivery of packets, and logically centralize it.    \\
-This construction enables easier management of the updates of the system. 
-\\
+This construction enables easier management of the updates of the system.\\
+
 There are different models of SDN yet proposed. In this case, we have adopted a distributed \emph{control plane} made of a number of entities called \emph{controllers}. This choice is justified, because if there was only one all-powerful controller it might fail at some moment and the system with it. When model involves a set of independent controllers we have more robustness if several of them fails.
 \\
 One of the challenges to face in SDN is to find consistent mechanisms for installing updates on the \emph{data plane} coming from the applications. This is a so-called \emph{concurrent policy composition}, the CPC problem, where \emph{policy}, roughly speaking, is set of recipes for the \emph{data plane} how to modify and where to forward incoming packets. The problem becomes not trivial when there are many concurrent update requests that \emph{conflict}. Synchronization on the \emph{control plane} is then necessary to solve the CPC problem. 
@@ -188,7 +191,7 @@ We say that a history $H$ is \emph{sequential} if there are no concurrent reques
 An important thing to mention is that we assume that each controller accepts a new request only when the previous one was answered\footnote{the possible implementation would be to put the pending requests in a buffer and only "wake" them up when the response to the previous one appears}. By this, each local history $H|p$ is sequential.
 To be able to compare all actions, we need not only the partial order yet introduced, but the total one. We have then to complete the history. A history is \emph{incomplete} if there exits a $p$ such that for $H|p$ a request has not been answered. Otherwise, $H$ is called \emph{complete}. The \emph{completion} of the history is made by adding a response to some request accordigly if it affected a packet (then with an \emph{ack}), or not (then with an \emph{nack}). \\
 To justify why it can happen that a history might be incomplete, consider the situation when the requested policy was successfully installed and it is already applied to some packets, but the controller learns it only when receiving a notification from the data plane. \\
-Two histories $H and H'$ are \emph{equivalent} (not necessairily completed ones) when their local histories are equal, $H|p=H'|p$ and when for all events $ev$ traces $\rho_{ev,H}=\rho_{ev,H'}$.
+Two histories $H$ and $H'$ are \emph{equivalent} (not necessairily completed ones) when their local histories are equal, $H|p=H'|p$ and when for all events $ev$ traces $\rho_{ev,H}=\rho_{ev,H'}$.
 A history is said to be \emph{legal} if : the committed (acked) policies are not conflicting and when for every inject event, its trace is consisted with all preceding acked policies \cite{CKLS15}.\\
 
 Now we are ready to define the \emph{sequential compositionality} or, in other words, \emph{linearizibility} of a history. A history $H$ is \emph{sequentially composable} if there exists a legal sequential history $S$:
@@ -200,11 +203,11 @@ There might be many $S$ sets equivalent to $H$. The main idea here is to be able
 
 \section{Abstractions used}
 % Short intro
-The distributed choice implies the possiblity to consider the failures and eventual synchrony, what would be useless in the case of just one all-powerfull controller. To make the controller-controller and controller-swich communication realistic and its implementation feasible we need to introduce different assumptions to the model. The abstractions specifies it in more detail.
+The distributed choice o the control plane implies the possiblity to consider the failures and eventual synchrony, what would be useless in the case of just one all-powerfull controller. To make the controller-controller and controller-swich communication realistic and its implementation feasible we need to introduce different assumptions to the model. The abstractions specifies it in more detail.
 
 \subsection{Message-passing}
-There are three types of messages. One from outside, and inside two types: controller-controller and controller-switch. We can also discern between \emph{broadcasting} and a \emph{single message}. The former abstraction enables an entity to send a message to "all" from a specified group\footnote{in our case, "all" will refer to controllers, no matter who emits switch or controller} in just one step. The latter will generally concern controller-switch communication. 
-We do not state nothing about the messages originating from outside. When they reach a controller it starts processing it. For single messages and broadcast, we use the \emph{Best-Effort Broadcast(BEB)} model as proposed in \cite{Guerraoui:2010:IRD:1951643}. We expect it to be eventually delivered. So after some finite amount of time even if the message was lost even many times it is finally delivered. In the model we propose we could even relax it a bit by saying that at least $f+1$ messages are eventually delivered, where $f$ is the maximal number of faulty controllers. 
+There are three types of messages: one from outside, and inside two types: controller-controller and controller-switch. We can also discern between \emph{broadcasting} and a \emph{single message}. The former abstraction enables an entity to send a message to "all" from a specified group\footnote{in our case, "all" will refer to controllers, no matter who emits switch or controller} in just one atomic step. The latter will generally concern controller-switch communication. 
+We do not state nothing about the messages originating from outside. When they reach a controller, it starts processing it. For single messages and broadcast, we use the \emph{Best-Effort Broadcast(BEB)} model as proposed in \cite{Guerraoui:2010:IRD:1951643}. We expect a message to be eventually delivered. So after some finite amount of time even if the message was lost (what can happen more than once) it is finally delivered. In the model we propose we could even relax it a bit by saying that at least $f+1$ messages are eventually delivered\footnote{when it concerns a correct controller broadcasting a message}, where $f$ is the maximal number of faulty controllers. 
 %Properties
 The BEB has generally three properties:
 \begin{enumerate}
@@ -212,36 +215,67 @@ The BEB has generally three properties:
 \item \emph{No duplication} : no message is delivered more than once
 \item \emph{No creation} : if a message was received by $p_j$ than it was sent by some correct $p_i$
 \end{enumerate}
-In fact, we do not need the second condition, which reduces the redundancy, but makes the model more simple. 
+In fact, we do not need the second condition, which reduces the redundancy, but makes the model more simple. Indeed, as we are placed in the model where a message can, because of the congestion on the link, be arbitrairly delayed, then it will be resent. That means, in case of delays \emph{duplication} property, may not hold. It can happen on the contorller-switch communicaiton.
 If a sender crashes then thanks to the failure detector the control plane learns it and one of the correct controllers will take over.
 \subsection{Synchronization and Partial synchrony}
-Time is one of the most important notions to capture in a real (not just teoretical) distributed systems. On its definition and accuracy of measurement depends, in some sense, the local knowledge of an enitity about the global status in the considered environment. Furthermore, time counting makes the entities to progress even if, \emph{e.g., }the expected message does not arrive.
-We are going to use here a physical time to measure.
+%Time and measuring the time
+$Time$ is one of the most important notions to capture in real (not just teoretical) distributed systems. On its definition and accuracy of measurement depends, in some sense, the local knowledge of an enitity about the global status in the considered environment. Furthermore, time counting makes the entities to progress even if, \emph{e.g., }the expected message does not arrive.
+%What is in the model
+In the model we use a physical time to measure. It means that each controller has a clock. It uses it only to estimate the time for the sent messages and in case of a delay to resend.\\
+%Synchrony and partial synchrony
 By \emph{partial} or \emph{eventual synchrony} we mean that \emph{most of the time}, the physical time bounds are respected \cite{Guerraoui:2010:IRD:1951643}. It is an adequate manner of perceiving the distributed systems in practice. We assume only that after some indetermined \emph{a priori} amomunt of time the selected assumptions hold. In some sense, we can regard the system as being synchronous most of the time, and otherwise it turns into an  asynchronous one.
-The situations when a time bound is not kept may be caused by, for example, lack of memory on the entity, too much workload, link failure, link congestion.
+The situations when a time bound is not kept may be caused by, for example, lack of memory on the processing entity, link failure, link congestion.
 \subsection{Failure detector}
-As the examined parts of the system like controllers risk ot crash, there is a vital need for their peers and for the correctness of the system in general to detect the possible failures. The system being partially synchronous may lead to possible mistakes while examination of the possible failure. This is caused by arbitrairly long, but at the same time bounded, delays.
+As the examined parts of the system like controllers risk ot crash, there is a vital need for their peers and for the correctness of the system in general, to detect the possible failures. The system being partially synchronous may lead to possible mistakes while examination of the possible failure. This is caused by arbitrairly long, but at the same time bounded, delays.
 That is also why the choice of \emph{Eventually Perfect Failure Detector (EPFD)} is the most suitable one. It mainly has two properties after \cite{Guerraoui:2010:IRD:1951643}
 \begin{enumerate}
 \item \emph{Strong completeness :} eventually, every crashed process is permanently suspected by every correct process
 \item  \emph{Eventual Storng accuracy :} eventuall, no correct process is supsected by any correct process
 \end{enumerate}
-Already, we can observe three different "opinions" a controller might have about its peer $p$: it is \emph{correct, suspect of crashed.} Only the middle term has to be more elaborated. A process $p$ becomes suspect if the \emph{heartbeat} message has not been delivered within an expected time interval. Then $p$ is suspected by $q$, which is awaiting for the news of $p$, as a possibly crashed. A dealayed message can finally arrive and then $q$ revises its knowledge about the situation of $p$ which was false. As a consequence $q$ enlarges the timeout for $p$'s response.  
+Already, we can observe three different "opinions" a controller might have about its peer $p$: it is \emph{correct, suspect or crashed.} Only the middle term has to be more elaborated. A process $p$ becomes suspect if the \emph{heartbeat} message has not been delivered within an expected time interval. Then $p$ is suspected by $q$, which is awaiting for the news of $p$, as a possibly crashed. A dealayed message can finally arrive and then $q$ revises its knowledge about the situation of $p$ which was false. As a consequence $q$ enlarges the timeout for $p$'s response.\\
+% What knowldge provides this abstract to the take-over process?
+\textbf{Inerface} But still we have to define what kind of help provides the EPFD to the newly elected leader\footnote{by \emph{leader} we mean the controller which is in charge of providing the answer $ack$ or $nack$, if the requested policy will be installed or not, respectively}.
+\begin{enumerate}
+\item learn the policy update requested by the application
+\item learn the progress made by the crashed process 
+\end{enumerate}
+Satisfying these two points will make the new leader correctly progress and finalize the task.
+For the point 1, we make an assumption that there exists a base were are stored the $whereabouts$ of each solliciting application. But why is it justified? Each application using the SDN has to log in and become recognizable by the system. So even it is not specified anywhere in this paper, we are sure that if one day the system will be widely implemented, this functionality is indispensable. Thus, the assumption is just.\\
+For the point 2, after learing the policy to update, new leader does the following:\\
+\begin{algorithm}
+\caption{Recovery algorithm, new leader is in charge of it}
+\begin{algorithmic}[1]
+\ForAll { C[k]'s that the leader does not have the content in $linearized$}
+	\State \textbf{Read-State} message with specified flow tables\Comment{the flow tables destined for consensus objects are known in advance by every controller}
+\EndFor
+\State in the control plane broadcast($\pi , id_{crashed}$,?)
+\If { any consensus object C[k] responds with $\pi$ and $id$ of the crashed process} 
+	\If { leader$_\pi$ has info from C[0] to C[k] in $linearized$}
+	\State count($\pi,linearized$)
+	\Else { send \textbf{Read-State} to the lacking C[$k'$]'s}
+	\EndIf
+\Else { broadcast($\pi,linearized,toBeLinearized,prod,installed$)}
+\EndIf 
+\State continue as in Line 4 in \emph{universal construction}
+\end{algorithmic}
+\end{algorithm}
 
+Remark: broadcast$(\textit{policy }\pi, int \textit{ }id,int \textit{question})$ is a method serving to send a survey in the control plane formed in words: have you received already a message with policy $\pi$ from the controller with id $id_{crashed}$? The asked controller should answer it. If yes (it has already this policy stored in local memory), it (the previous leader) has crashed, and I am the new leader. Change the $id_{crashed}$ to my id $id$ and $prod_{crashed}$ to my $prod$.
+It is expected that any actualisation of local memory will be done in the algorithm.
 \subsection{Per-packet consistency}
-In this section we would like to present a very important notion to our work of \emph{per-packet} consistency. Before we will state the  definition, let's take a look at an example which will introduce us more into the origins of this abstract.
-Imagine we have a SDN network with switches and already defined some rules that guarantee  access control. It means that some packets after reaching a certain switch are simply denied to be forwarded and are dropped. This is also what we have mentioned before as flitering. And now we want to install a new udpate which will change  the security policy to more strict one. It is not difficult to see that a programmer is then faced to install the updates in an order which will not violate the former security policy. As we cannot do it in one atomic step (at least with yet introduced definitions), so the reconfiguration have to be rolled out one-by-one on each switch. So the problem is with which switch to start and which policy should we install on it. It is absolutely not trivial task.
+In this section we would like to present a very important notion to our work : \emph{per-packet} consistency. Before we will state the  definition, let's take a look at an example which will introduce us more into the origins of this abstract.
+Imagine we have a SDN network with switches and already defined some rules that guarantee  access control. It means that some packets after reaching a certain switch are simply denied to be forwarded and are dropped. This is also what was mentioned before as flitering. And now we want to install a new udpate which will change  the security policy to more strict one. It is not difficult to see that a programmer is then faced to install the updates in an order which will not violate the former security policy. As we cannot do it in one atomic step (at least with yet introduced definitions), so the reconfiguration have to be rolled out one-by-one on each switch. So the problem is with which switch to start and which policy should we install on it. It is absolutely not trivial task.
 To make it easy programmable we want to enable all new incoming configurations to be verified by the programmer using just a simple function. The main achievement of the \cite{Reitblatt:2012:ANU:2342356.2342427} is to construct an abstract that no matter the order to install new rules, it works. Intuitively, this universal mechanism depends on a \emph{tag} that each packet is stamped with on entering the network at ingress port. This version number characterizes the current network configuration and tells the switch which rules should be applied (those carrying latest version and the highest priority). It does not mean that the older rules are forgotten. During the \emph{two-phase update}, that we are going to describe, they also get the latest version tag and they are used according to their domain and the highest priority as stated.\\
 The per-packet consitency provides us with so-called \emph{trace properties} chracterizing the paths that a packet is allowed to take \cite{Reitblatt:2012:ANU:2342356.2342427}. 
 % implementation of per-packet consistency
 The implementation consists of two main parts : the \emph{one-touch update} and the \emph{unobserval event.} Both constitue what we call a \emph{two-phase update.} 
 The \emph{one-touch update} stands for an update that with the property that no packet can take a path through the network that reaches an updated (or to-be-updated) part of the switch rule space more than once \cite{Reitblatt:2012:ANU:2342356.2342427}. In other words, we can see it simply as a loop-free property.
-An \emph{unobservable update} is an update that does not affect the set of traces which the packets can produce while traversing the network. It means that if $P$ was the set generated by all types of packets served in the network before the configuration, the after it the set generated by the packets $P'=P.$\\ 
-The idea behind it is to firstly install the new rules on the internal ports. For the moment, thanks to the tag they have which is bigger than the current one, the new configuration remains invisible for the packets and so they follow still the former policy. The second step is to install the new rule on the ingress port \underline{and} make it to stamp the incoming packets with the new version tag. Then the new forwarding rules may be safely applied.
+An \emph{unobservable update} is an update that does not affect the set of traces which the packets can produce while traversing the network. It means that if $P$ was the set generated by all types of packets served in the network before the configuration, then after the actualisation, the set generated by the packets $P'=P$.\\ 
+The idea behind it is to firstly install the new rules on the internal ports. For the moment, thanks to the tag they have which is bigger than the current one, the new configuration remains invisible for the packets, and so they follow still the former policy. The second step is to install the new rule on the ingress port \underline{and} make it to stamp the incoming packets with the new version tag. Then the new forwarding rules may be safely applied.
 %If needed: introduce the formal definitions
 \subsection{CPC abstraction}
 To talk about the \emph{Consistent Policy Composition (CPC)}, let's firstly have a brief look at it origins coming from \emph{Software Transactional Memory (STM)}\cite{Shavit:1995:STM:224964.224987}. A \emph{transaction} is a finite sequence of operations. To be more specific, a transaction is generally used on shared-memory structures and the operations it concerns are \emph{read-write} ones. A software transactional memory is a shared memory to which we can apply a sequence of operations in one atomic step thanks to the usage of transactions.
-The CPC abstraction as its predecessor STM has as a main task to, roughly speaking, order sequentially the incoming concurrent events. More then that the CPC not only addresses to the policies proposed at a time, but also to the traffic. It means that we can see both of them in the history as linearized. To be more formal we say that the CPC problem is solved if for every history $H$, there exists a completion $H'$ satisfying two properties:
+The CPC abstraction as its predecessor STM has as a main task to, roughly speaking, order sequentially the incoming concurrent events. More then that, the CPC not only addresses to the policies proposed at a time, but also to the traffic. It means that we can see both of them in the history as linearized. To be more formal we say that the CPC problem is solved if for every history $H$, there exists a completion $H'$ satisfying two properties:
 \begin{enumerate}
 \item \textbf{Consistency:} $H'$ is sequentially composable
 \item \textbf{Termination:} eventually, every correct controller p receiving a request answers with \emph{ack} or \emph{nack} in H
@@ -250,11 +284,11 @@ From the \emph{sequential compositionality of histories} we will easily deduce t
 In this paper we implement the $CPC$ abstract using the consensus objects from \emph{universal construction}.
 %It also guarantees the \emph{all-or-nothing} semantics, which means that if one of the operations in the sequence  is rejected, then the transaction is rejected, too.
 \subsection{Compare And Swap}
-\emph{Compare And Swap(old, new)}(CAS) is a very common synchronization operation. It is works as follows: when called it verifies the \emph{register}, a read-write memory location, if has the value equal to $old$. If yes, it overwrites it with new value $new$, otherwise no action is taken and the method returns the value in the register. Other way of specification is to say that if the method has overwirtten the value, it returns $true$. Otherwise it retruns $false$.
-When implementing the OpenFlow as in \cite{In-band}, one can use one of the above variants. We will you the one proposed in \cite{In-band}.
-\subsection{Consensus Object and Universal construction}
+\emph{Compare And Swap(old, new)}(CAS) is a very common synchronization operation. It works as follows: when called it verifies if the \emph{register}, a read-write memory location, has the value equal to $old$. If yes, it overwrites it with new value $new$, otherwise no action is taken and the method returns the value stored in the register. Other way of specification is to say that if the method has overwirtten the value, it returns $true$. Otherwise, it retruns $false$.
+When implementing CAS in the OpenFlow as in \cite{In-band}, one can use one of the above variants. 
+\subsection{Consensus Object and Universal Construction}
 %Set off with a short intro
-Before we will describe what the universal construction is about let's have a brief overview on the consensus object. The consensus is a sort of a common agreement between objects about, for example, what value to chose.
+Before describing what the universal construction is about, let's have a brief overview on the consensus object. The consensus is a sort of a common agreement between objects on, for example, what value to chose.
 The consensus abstraction is characterized with four properties according to \cite{Guerraoui:2010:IRD:1951643}.
 \begin{enumerate}
 \item \emph{Termination :} every correct process finally decides value
@@ -262,55 +296,119 @@ The consensus abstraction is characterized with four properties according to \ci
 \item \emph{Integrity :} the decision is only taken once
 \item \emph{Agreement :} every correct process takes the same decision
 \end{enumerate}
-It is a complete description of what properties we will try to guarantee while refering to the consensus object. The implementation will be presented later.
+It is a complete description of what properties we guarantee while refering to the consensus object. The implementation will be presented later.
 
-To continue let's introduce some definitions. A method is \emph{wait-free} if any time it is called, its execution is finished in a finite number of steps. An object is \emph{wait-free} if each method it contains is wait-free. 
-To solve a consensus in a wait-free manner is not always possible. However, there exists some classes of objects called \emph{universal}. It means that one can construct a wait-free linearizable implementation of any concurrent object using the objects from this class. It is a powerful generic tool which will help us to implement the CPC abstraction using the consensus objects.  
-On the high-level the universal construction serves for solving the consensus in a wait-free manner when no matter how many processes there are. The one we consider here has also the special property which is that at some point any value will be present in some consensus object.
-Each process possesses its local variables: $prod,k\in\mathbb{N}$, where $prod$ is the number of values proposed by the process and $k$ the latest consensus instance used; $linearized=(v_1,r_{i_1},id_1,prod_1),(v_2,r_{i_2},id_2,prod_2),...,$ where $v_k$ stands for the agreed on value, and  $r_{i_k}$ is the round number and the $id$ number for the idendtifier of the demanding process and $prod$ is the number of values, set initially to zero, a given process has yet proposed\footnote{ remark that there can be more then one decided value for each round; secondly, we can and will add more fields for each element on the list in the exact implementation, but now for the reasons of simplicity we leave it in this form}, the list is storing already decided by all processes former values; $toBeLinearized = (v_1,id_1),(v_2,id_2),\ldots$, a list storing the values proposed by other processes, but still waiting to be agreed on. By $C[k]$ we mean the $k^{th}$ consensus object's instance. The algorithm for each process $p_i$ proposing some value to be chosen:
-\begin{enumerate}
-\item add $(v_k,id_{p_i})$ to $toBeLinearized$
-\item $toBeLinearized$ = $toBeLinearized - Linearized$\footnote{here we abuse a bit the notation, because the elements of both lists has some different fields. However, we can identify the same elements on both lists thanks to the process' $id$, the proposed value and the $prod$ field}
-\item send to all $(linearized, toBeLinearized,k)$
-\item repeat
-\item $response$ = C[++k].propose($toBeLinearized$)
-\item $linearized$ = $responses.linearized$
-\item until C[k] returns \texttt{Success}\footnote{what happens when the proposed value(s) in $toBeLinearized$ won the consensus} 
-\item $++prod$
-\end{enumerate}
+To continue let's introduce some definitions. A method is \emph{wait-free} if: when called, its execution is finished in a finite number of steps. An object is \emph{wait-free} if each method it contains is wait-free. 
+It is not always possible to solve a consensus in a wait-free manner. However, there exist some classes of objects called \emph{universal} where it is feasible. It means that one can construct a wait-free linearizable implementation of any concurrent object using the objects from this class. It is a powerful generic tool which will help us to implement the CPC abstraction using the consensus objects.  
+On the high-level the universal construction serves for solving the consensus in a wait-free manner with arbitrairly many processes. The one we consider here has also an additional property which is that at some point any value will be present in some instance of the consensus object.\\
+Each process possesses the following local variables: $prod,k\in\mathbb{N}$, where $prod$ is the number of values proposed by the process and $k$ the latest consensus instance used; $linearized=(v_1,r_{i_1},id_1,prod_1),(v_2,r_{i_2},id_2,prod_2),...,$ where $v_k$ stands for the agreed on value; $r_{i_k}$ is the round number; $installed$ is the list of the updates that have been linearized and installed (on the data plane) ;$id$ is the number for the idendtifier of the demanding process; $prod$ is the number of values, set initially to zero, a given process has yet proposed\footnote{remark that there can be more then one decided value for each round; secondly, we can and will add more fields for each element on the list in the exact implementation, but now for the reasons of simplicity we leave it in this form}; the list is storing already decided by all processes former values; $toBeLinearized = (v_1,id_1),(v_2,id_2),\ldots$, a list storing the values proposed by other processes, but still waiting to be agreed on. By $C[k]$ we mean the $k^{th}$ consensus object's instance. \\
+The algorithm for each process $p_i$ proposing some value to be chosen:
+\begin{algorithm}
+  \caption{Universal Construction}\label{Universal}
+  \begin{algorithmic}[1]
+   %\Procedure{Universal Construction}{}
+   \State add $(v_k,id_{p_i})$ to $toBeLinearized$
+   \State $toBeLinearized$ = $toBeLinearized - Linearized$\Comment{ref.Com1}
+   \State send to all $(linearized, toBeLinearized,k)$
+   	\Repeat
+   		\State $response$ = C[++k].propose($toBeLinearized$)
+   		\State $linearized$ = $responses.linearized$
+   	\Until{C[k] returns \texttt{Success}}\Comment{ref.Com2}
+   	\State $++prod$
+   %\EndProcedure
+  \end{algorithmic}
+\end{algorithm}
+\\
+\subparagraph{Comment\ref{Universal}.1 :} here we abuse a bit the notation, because the elements of both lists has some different fields. However, we can identify the same elements on both lists thanks to the process' $id$, the proposed value and the $prod$ field.\\
+\subparagraph{Comment\ref{Universal}.2 :} \texttt{Success} happens when the proposed value(s) in $toBeLinearized$ won the consensus.
 
-Brievely, when the process proposes a value it checks what are the already linearized ones and which to propose. It sends also its list to all processes to make them aware about the change in the system. The thing is that it does not have to await them to answer, but dierctly sends its proposition to some instance of the consensus object. It resends it to the following instances until, either it or other process has put this proposition in some object. The latter can happen thanks to the Line 3, when other processes learn about the new request. 
-\section{Interfaces}
+Briefly, when the process proposes a value, it firstly checks what are the already linearized (accordingly to what it learned) ones among those in the $toBeLinearized$\footnote{what is fully justified, because the process was gathering the informations about both lists from others, but it did not updated the $toBeLinearized$ one using the $linearized$}. It sends local lists to all processes to make them aware about the change in the system. The thing is that it does not have to await them to answer, but dierctly sends its proposition to some instance of the consensus object. It resends it to the next instances until, either it or other process has put this proposition in some object. The latter can happen thanks to the Line 3, when other processes learn about the new request.
+%\section{Interfaces}
 %
-\subsection{Message-passing}
-\subsection{Failure detectors}
-\subsection{CPC abstraction}
-\subsection{Universal construction}
+%\subsection{Message-passing}
+%\subsection{Failure detectors}
+%\subsection{CPC abstraction}
+%\subsection{Universal construction}
 %
 \section{OpenFlow 1.4.}
 % Motivate the OpenFlow utility
-The \emph{OpenFlow}, that we are going to describe a bit more in the special section, is the specification we use for the switch and a communication protocol between switches and controllers. To get a simpler and clearer vision of this model we propose a more mathematical approach to describe it.  
+The \emph{OpenFlow} is the specification used for the switch. Furthermore, it gives the formal specification of a communication protocol between switches and controllers. In this section we describe the certain features of this paradigm used to outline the main points yet defined in the mathematical model. The object here is to get more insight about the mechanisms to come in implementations.
+%To get a simpler and clearer vision of this model we propose a more mathematical approach to describe it.
 % Try to describe the features it has and that you use in this paper
-
+\subparagraph{Switch architecture and functioning} Each switch consists of one or more \emph{flow tables}\footnote{in our model we requiere at least two flow tables} and a \emph{group table}, which perform packet lookups and forwarding, and an \emph{OpenFlow channel} to an external controller\cite{OpenFlow}. Keep in mind that the OpenFlow does not specify the controller's architecture, but only the switch components. 
+Each switch possess a set of ports: logical: high-level abstracts, that may use not OpenFlow methods; physical: corresponding the hardware interface ;and \texttt{Local} reserved port if supported. 
+\subparagraph{Flow Tables} Flow table is a collection of \emph{flow entries}. Each flow entry is made of \emph{math field}, \emph{counters} and \emph{instructions}. When a packet enters to the switch via \emph{ingress port}, it processessed (\emph{pipeline processing}) and it quits through the \emph{output port}.
+To know how to process a given packet it is matched against the \emph{match field}, starting with the first table and the first flow entry. Thus a flow table cannot be empty. It matches if the values defined in a flow entry match fields, then the corresponding instructions are applied.  They modify the \emph{action} of a packet, or can also modify pipline processing. When the packet finally passed through all flow tables, the actions can be applied to a packet, and it is dropped or forwarded. 
+\subparagraph{Controller-Switch Communication} There are three main types of messages supported by the OpenFlow: \emph{contorller-to-switch, ansynchronous} and \emph{symmetric}.
+The first one is initiated by the controller. There are several kinds this type of messages. We use generally two: \textbf{Read-State}, to lookup the current status of switch, its flow tables, counters, etc... ; \textbf{Modify-State} to add, delete or modify the given rules (flow entiries).
+The asynchronous messages are sent by switch to the controller. It happens when the packet enters, leaves or the switch status changes.  The symmetrical messages are sent in either dierction. They serve while setting up the connection or to echo the liveness of controller/switch. 
+\subparagraph{Flow Monitor}  When establishing the connection a controller can ask a set of switches to put the \emph{flow monitoring}. It works on the set of flow entries. Any change in a monitored table is tracked, the switch sends the report to a controller.This feature is activated when sending 
+\texttt{OFPMP\_FLOW\_MONITOR} multipart request.  
+\subparagraph{Bundle} It is a sequece of OpenFlow commands send by a 
+controller, applied as a single operation. It is a very convenient tool for parllelizing. If one of the given operations from the sequence returns an error, then the whole bundle message is rejected, and none of the operations\footnote{even those, from the bundle, which were accepeted} takes effect. 
+%Short comment
+Thanks to the bundle feature, it is possible in the model to provide a transactional interface.
+\subparagraph{Bundle Mathematical Model}
 \section{Algorithms}
 %
+
 %
 \section{Pseudocode}
-%Write a plain pseudocode
+
+% Write a plain pseudocode
 % show methods + which models they use + short analysis of 
-%  -high-level algorithm for policy serilaization, based on the iniversal construction using consensus objects
+%  -high-level algorithm for policy serilaization, based on the universal construction using consensus objects
 %
-An algorithm serializing policies for each controller receiveing a request
-\begin{enumerate}
-\item add request to the list \emph{notLinearized}
-\item broadcast( \emph{notLinearized, linearized}, k)
-\item to the \emph{data plane} to C[k+1] send(\emph{notLinearized})
-\item wait for the response from C[k'] \footnote{ we'll implement later what does the C[k+1] if it was already used for a different consensus}
-\end{enumerate}
+An algorithm serializing policies for each controller receiveing a request is already the one introduced with universal construction.
+The algorithm for receiving a controller-controller message from $p$:
+\begin{algorithm}
+\caption{Controller-controller broadcast}\label{BroadcastCC}
+  \begin{algorithmic}[1]
+    \Procedure{broadcast}{$linearized_p,toBeLinearized_p, installed_p, k_p,prod_p$}%\Comment{The g.c.d. of a and b}
+    \If {$k<k_p$} $k=k_p$
+    \EndIf
+    \If {$linearized\subseteq linearized_p$} $linearized = linearized_p$
+    \EndIf
+    \State $toBeLinearized.append(toBeLinearized_p-linearized)$
+    \State $installed$=$installed.appendOrder(installed_p-installed)$
+    \EndProcedure
+  \end{algorithmic}
+\end{algorithm}
+
+A controller recieving this kind of message remains passive. It means that undertakes only the housekeeping actions. It is on the contrary to the controller which receives an update demand from the application and takes the adequate operations to get the answer for the application.
+Remark that we use here a method $appendOrder(list l)$. We want this method to simply append a $l$ list and order it according to the lexicographical order introduced in the next section.
+%\begin{enumerate}
+%\item add request to the list \emph{notLinearized}
+%\item broadcast$(notLinearized, linearized,k,prod)$
+%\item to the \emph{data plane} to C[k+1] send(\emph{notLinearized})
+%\item wait for the response from C[k'] \footnote{ we'll implement later what does the C[k+1] if it was already used for a different consensus}
+%\end{enumerate}
 %
 %- an implementation of consensus in Openflow
 
 %
+\subsection{Lexicogrphical Order}
+To have a simple mechanism of a deterministic sort of the policies in the object it will be stored in we use a lexicographical order.
+% The exact definition
+We need to introduce here a \emph{lexicographical} order: $(nb_{acc}, id_1 )<(nb_{acc'}, id_2)$  \textbf{iff}  $nb_{acc} < nb_{acc}'  $ \emph{or} $nb_{acc} = nb_{acc}'$ and $id_1<id_2$, where $nb_{acc}$ means the number of already installed policies by the controller with id = $id_k$.\\
+When a controller sends a $toBeLinearized$ list to a consensus object in the data plane, when the object was empty, it saves the list in its \emph{flow tables}. The switch, due to the \emph{OpenFlow} protocol, when the status of the switch changes, sends the notification to the control plane, but it is not its responsibility to guarntee that all controllers receive the message. It can be sollicited by the contorller proposing to resend the answer, but otherwise it does not take any action. Because we assumed in the model the loss of messages it turn out that it only the leader which eventually learns about the status change.
+% What if a contorller goes down and any other controller did not learn about the change of the status?
+If it happens that a leader$\pi$ goes down and none of the control plane learns about the change status in the sollicited switch, thanks to the $EPFD$ new leader is elected.
+% Recovery after the unexpected failure; !!!!!!!!!!!!!Write a pseudocode too!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+The new leader has two main blocks to complete. The first one is to explore what did the previous leader and continue the interrupted protocol by finally providing a correct $ack$ or $nack$ answer to the application. The recovery algorithm was already described in section about \emph{Failure Detection}. \\
+ 
+ By interaction within the control plane, a controller can learn about the changes applied on a switch and update its local variables. Furthermore, once the leader$_\pi$, on the \emph{control plane} receives the notifications from C[0] to some C[k], it can easily count what should be installed.%%%%%%%%%%%%%%%%%%%%Explain how it counts %%%%%%%%%%%%%
+  The roll-out of the installation: each leader having gathered the notifications from C[0] to C[k], for some k where its policy $\pi$ is placed, the leader can easily count if it should continue with installation or not.
+To see how it is done we have to complete a bit the definition of the lexicographical order:
+$(k,prod,id)<(k',prod',id') \Leftrightarrow $
+\begin{enumerate}
+\item $k<k'$ or if $k=k'$ then 
+\item $prod<prod'$ or if $prod=prod'$ then
+\item $id<id'$
+\end{enumerate}
+Where $k$ is the identifier of the consensus object, $prod$ the number of policies proposed by the controller with identifier $id$. The definition is correct because each contorller has different id and two updates proposed from the same controller can not be placed in the same object, because we assumed the controllers to work sequentially,\emph{i.e.,} accept next update proposition only when the latter has been already completed (with $ack$ or $nack$).
+%
+ 
 \subsection{Consensus object implementation}
 How then to implement a \emph{consenus object} in \emph{OpenFlow} ? \\
 For each switch, for this model we impose that there were at least two \emph{flow tables}. The enumeration of the \emph{flow tables} starts with zero. Depending on the system requierements we cas set on each switch k \emph{flow tables} where we will put the consensus objects. For simplicity we assume here two things. \emph{Firstly,} on each switch there is the same number of \emph{consensus objects.} Remark that we can easily avoid this assumption by the primitive which informs the \emph{control plane} about the number of consensus object/ the total number of consensus objects in this switch. This can easily be done using the \emph{OpenFlow} protocol controller-to-switch messages of type \textbf{Read-state}. It is for the reasons of simplicity we omit this case. \emph{Secondly,} we assume that once all of the \emph{consensus objects} are full, the system informs about it the \emph{control plane} which:
@@ -326,13 +424,16 @@ In both cases, if a contorller goes down, thanks to the \emph{failure detector} 
 \item restarts only when all correct contorllers learns about the "cleaning" in the \emph{data plane}. 
 \end{enumerate}
 Now we can describe the implementation of the \emph{consensus objects} on the \emph{data plane}. On each switch the \emph{consenus objects} are implemented in tables from 0 to k-1.
-\begin{enumerate}
-\item for tables 0 to k-1 do
-\item Match field $\leftarrow$ ANY
-\item priority $\leftarrow \infty$
-\item Instructions $\leftarrow$ Goto-Table k
-\item end for
-\end{enumerate}
+\begin{algorithm}
+  \caption{Flow Table Initialization}\label{FTInit}
+  \begin{algorithmic}[1]
+      \For{\texttt{tables 0 to k-1}}
+        \State Match field $\leftarrow$ ANY
+        \State $priority\gets\infty$
+        \State Instructions$\gets$ Goto-Table $k$
+      \EndFor
+  \end{algorithmic}
+\end{algorithm}
 First remark is the fields: \emph{counters, timeouts} and \emph{cookies} are set to default values. In fact we won't use them, but all we need is to define correctly according to the \emph{OpenFlow} specification. Secondly, let's explain the choice of the parameters. The \emph{match field} is matched against a packet. If the packet matches the flow entry, the highest priority is chosen and the prescribed instructions and actions take effect at the and of pipeline processing. In our case, we wildcard the packets, it means that the \emph{match field} matches each packet. The priority is set to $\infty$, because otherwise, when the consenus object is filled with new updates, then there might exits a priority greater then we specify by default for the table. It would mean that if there comes a packet matching to both flow entries (the deafault one and the second one with higher priority), then a packet would be processed by this policy violating the \emph{per-packet} consitency property. We think that programming the $\infty$ value would not cause any problems. 
 %those talbes, or rather their \emph{flow entries} would be considered as \emph{table-miss} entries. In general, \emph{table-miss} flow entires specifies how to process the unmatched packets by any other flow entries before. And it matches ANY packet and its priority is set to 0. It also contains different features then other flow entires\footnote{for more detailed description ref. \emph{OpenFlow} spec}. All the tables are filled out in the same manner for simplicity. When we will use the \emph{compare(addr,old)} abstract to implement the CAS on them, so as to set the \emph{old}, \emph{i.e.}, the expected value of the flow entry with those data.
 \\
@@ -346,17 +447,22 @@ s\emph{write(addr$_{l_{i_j}}$, k$_{l_{i_j}}$)} contains only the rules form the 
 %
 
 At the begining when each controller establishes a connection with each switch in the \emph{data plane} it sets a \emph{flow monitor} on the consensus object flow tables. The \emph{flow monitor} serves to call a contorller about the change in a consensus object's content, so in its flow table. It is possible that the communication band is overloaded, in reality, but the OpenFlow already knows how to acknowledge the contorllers. On the other hand, we also dispose of the communication between the controllers, so that even in case of congestion on the bandwidth between the two \emph{planes} the common knowledge about the consensus object's state is "alive", can be verified. 
- By this mechanism each contorller would get to know with more accuracy the first free consensus object's number. 
+ By this mechanism each controller would get to know with more accuracy the first free consensus object's number. 
 When the switch using responds for the \emph{bundle} implementing CAS, then the controller taking care of the installation of the requested policy using the \emph{OpenFlow} protocol. \\
 Now we are ready to see the what does the controller once it has learned about the \emph{linearized} set from the consensus objects from 0 to some $k'$, where the controller's request is in come C[k] with k$<k'$:
-\begin{enumerate}
-\item inst $\leftarrow$ \emph{count(linearized, request)}
-\item if inst = true then
-\item $\forall$ s, switch concerned by the update send \emph{installationRequest(rules(s)})
-\item else send \emph{nack(request, reason)} to the application
-\end{enumerate}
+\begin{algorithm}
+ \caption{Installation}
+ \begin{algorithmic}[1]
+ \State inst $\gets$ $count(linearized, request)$
+ \If { inst = true}
+ 	\ForAll{ s,switch concerned by the update}  send $installationRequest(rules(s))$
+ 	\EndFor
+ \Else { send $nack(request, reason)$ to the application}
+ \EndIf
+ \end{algorithmic}
+\end{algorithm}
 % --count description
-The elements of the list should have the following structure:
+The elements of the list should have the following structure:\\
 struct \texttt{elem\_list}$\lbrace$
 \begin{enumerate}
 \item int instSucceded;
@@ -366,33 +472,33 @@ struct \texttt{elem\_list}$\lbrace$
 \item int consObjNb;
 \end{enumerate}
 $\rbrace ;$\\
-For the reasons of the specific software demands the \texttt{elem\_list} can contain other fields, but those three are mandatory.
+For the reasons of the specific software demands the \texttt{elem\_list} can contain other fields, but those five are mandatory.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % define policy structure!!
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-count(\texttt{elem\_list}[] list,\texttt{elem\_list} element)
-\emph{installed} is a list of \texttt{elem\_list}
-\begin{enumerate}
-\item installed = $\emptyset$ 
-\item if element $\in$ list then
-\item k $\leftarrow$ take index of element in the list
-\item for i in 0 to k do
-\item  if list[i].inst = false then
-\item \begin{tabbing}
-\hspace{0.25 cm}\=\kill
-  \> if compose(installed, list[i]) then \\
-  \> list[i].instSucceded ++\\
-  \> list[i].inst = true\\
-  \> installed.append(list[i])\\
-  \> end if    
-\end{tabbing}
-\item  if element $\in$ installed then 
-\item  return
-\item  else return false
-\item  end if
-\item end for 
-\end{enumerate}
+\begin{algorithm}
+\caption{Counts if a given policy will be installed or not}
+\begin{algorithmic}[1]
+	\Procedure{count}{\texttt{elem\_list}[] list,\texttt{elem\_list} element}
+	\If { $element \in$ list}
+		\State k $\gets$ take index of $element$ in the list
+	\EndIf
+	\For { i in 0 to k}
+		\If { list[i].inst = false}	
+
+			\If { compose(installed, list[i])}\Comment{$installed$ is a list of \texttt{elem\_list}}
+				\State list[i].instSucceded ++
+				\State list[i].inst = true
+				\State $installed$.append(list[i])
+			\EndIf
+		\EndIf
+	\EndFor
+	
+	\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
 Remark the \emph{list} is sorted according to the \emph{lexicographical order} defined for policies contained in \emph{consensus objects.} \\
 %count description--
 %--compose description
