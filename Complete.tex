@@ -504,30 +504,26 @@ $\bullet$ $consObjNb$ is the consensus object, where $pu$ is stored.\\
 	\If { compose(installed, list[i])}\Comment{$installed$ is a list of \texttt{elem\_list}}
 		\State last$\gets$ the latest element from $installed$
 		\State last$_{idx}\gets$ index of last in $list$
-		\State \For { i from last$_{idx}$ to end of $list$}
+		\For { i from last$_{idx}$ to end of $list$}
 			\If{ compose(list[++i], installed)}
 				\State list[i].inst = $True$
 				\State installed.append(list[i])
-			\Else {list[i}.inst = false}			
+			\Else { list[i].inst = false}			
 			\EndIf	
 		\EndFor		
 		%\State list[i].instSucceded ++, not necessary
 		%\State list[i].inst = true
-		\State $installed$.append(list[i])\Comment{if it was not yet appended} 
-			\State \Return $True$
-	\Else \Return $False$			
-	\EndIf
-	\For { i in 0 to k}
-		\If { list[i].inst = false}	
-			
+		%\State $installed$.append(list[i])\Comment{if it was not yet appended} 
+		\If{ list[k].inst} \Return $True$
+		\Else{ \Return $False$}
 		\EndIf
-	\EndFor	\\
-	\Return $False$
+	\EndIf			
+	\State\Return $False$
 	\EndProcedure
 \end{algorithmic}
 \end{algorithm}
 % --count description
-The function returns $True$ when the policy from $element$ can be installed not violating the compositionality of the policies. Lines 2 and 3 are just to ensure that the to-be-installed policy is in the list and to take its position\footnote{remind that the list proposed to some C[k] may contain more than one element}. In the $for$ loop 
+The function returns $True$ when the policy from $element$ can be installed not violating the compositionality of the policies, otherwise it returns $False$. Lines 2 and 3 are just to ensure that the to-be-installed policy is in the list and to take its position\footnote{remind that the list proposed to some C[k] may contain more than one element}. In the $for$ loop if $\pi$ does not compose with what is already installed, it is rejected. When it composes with $installed$, then the function verifies if it also composes with the updated claimed, before it. We know the $before$ policies thanks to the lexicographical order. Note that, the $count()$ function provides the leader with information of to-be-installed policies, which can be shared with other cotrollers when passing messages. 
 %count description--
 Remark the \emph{list} is sorted according to the \emph{lexicographical order} defined for policies contained in \emph{consensus objects.} \\
 
