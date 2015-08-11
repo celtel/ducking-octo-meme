@@ -359,12 +359,12 @@ Thanks to the bundle feature, it is possible in the model to provide a transacti
 % show methods + which models they use + short analysis of 
 %  -high-level algorithm for policy serilaization, based on the universal construction using consensus objects
 %
-An algorithm serializing policies for each controller receiveing a request is already the one introduced with universal construction.
-The algorithm for receiving a controller-controller message from $p$:
+An algorithm serializing policies for each controller recieving a request is already the one introduced with universal construction.
+The algorithm for receiving a controller-controller message from $p$, the leader of new to-install-update:
 \begin{algorithm}
 \caption{Controller-controller broadcast}\label{BroadcastCC}
   \begin{algorithmic}[1]
-    \Procedure{broadcast}{$linearized_p,toBeLinearized_p, installed_p, k_p,prod_p$}%\Comment{The g.c.d. of a and b}
+    \Procedure{broadcast}{$linearized_p,toBeLinearized_p, installed_p, k_p,prod_p$}
     \If {$k<k_p$} $k=k_p$
     \EndIf
     \If {$linearized\subseteq linearized_p$} $linearized = linearized_p$
@@ -375,8 +375,8 @@ The algorithm for receiving a controller-controller message from $p$:
   \end{algorithmic}
 \end{algorithm}
 
-A controller recieving this kind of message remains passive. It means that undertakes only the housekeeping actions. It is on the contrary to the controller which receives an update demand from the application and takes the adequate operations to get the answer for the application.
-Remark that we use here a method $appendOrder(list l)$. We want this method to simply append a $l$ list and order it according to the lexicographical order introduced in the next section.
+A controller recieving this kind of message remains passive. It means that it undertakes only the housekeeping actions. It is on the contrary to the controller which receives an update demand from the application and takes the adequate operations to respond it.
+Remark that we use here a method $appendOrder(\textit{list } l)$. We want this method to simply append a $l$ list and order it according to the lexicographical order introduced in the next section.
 %\begin{enumerate}
 %\item add request to the list \emph{notLinearized}
 %\item broadcast$(notLinearized, linearized,k,prod)$
@@ -384,22 +384,22 @@ Remark that we use here a method $appendOrder(list l)$. We want this method to s
 %\item wait for the response from C[k'] \footnote{ we'll implement later what does the C[k+1] if it was already used for a different consensus}
 %\end{enumerate}
 %
-%- an implementation of consensus in Openflow
 
 %
 \subsection{Lexicogrphical Order}
-To have a simple mechanism of a deterministic sort of the policies in the object it will be stored in we use a lexicographical order.
+To have a simple mechanism of a deterministic sort of the policies in the object it will be stored in, we use a lexicographical order.
 % The exact definition
-We need to introduce here a \emph{lexicographical} order: $(nb_{acc}, id_1 )<(nb_{acc'}, id_2)$  \textbf{iff}  $nb_{acc} < nb_{acc}'  $ \emph{or} $nb_{acc} = nb_{acc}'$ and $id_1<id_2$, where $nb_{acc}$ means the number of already installed policies by the controller with id = $id_k$.\\
-When a controller sends a $toBeLinearized$ list to a consensus object in the data plane, when the object was empty, it saves the list in its \emph{flow tables}. The switch, due to the \emph{OpenFlow} protocol, when the status of the switch changes, sends the notification to the control plane, but it is not its responsibility to guarntee that all controllers receive the message. It can be sollicited by the contorller proposing to resend the answer, but otherwise it does not take any action. Because we assumed in the model the loss of messages it turn out that it only the leader which eventually learns about the status change.
+It is defined as follows:\\
+$(nb_{acc}, id_1 )<(nb_{acc'}, id_2)$  \textbf{iff}  $nb_{acc} < nb_{acc}'  $ \emph{or} $nb_{acc} = nb_{acc}'$ and $id_1<id_2$, where $nb_{acc}$ means the number of already installed policies by the controller with id = $id_k$.\\
+This definition is used locally by every leader controller to sort the vector $toBeLinearized$ and send to the data plane. When the receiving object was empty, it saves the list in its \emph{flow tables}. The switch, due to the \emph{OpenFlow} protocol, when its status changes, sends the notification to the control plane, but it is not its responsibility to guarntee that all controllers receive the message\footnote{even if there is a flow monitor set on a given table}. It can be sollicited by the controller proposing to resend the answer, but otherwise it does not take any action providing the delivery. Because we assumed in the model the loss of messages it turns out that it might be only the leader which eventually learns about the status change.
 % What if a contorller goes down and any other controller did not learn about the change of the status?
-If it happens that a leader$\pi$ goes down and none of the control plane learns about the change status in the sollicited switch, thanks to the $EPFD$ new leader is elected.
+If it happens that a leader$\pi$ goes down and none of the control plane learns about the change status in the sollicited switch, thanks to the $EPFD$ new leader\footnote{the next correct cotroller, \emph{i.e.,} repeat: (controller $c$ with $id_{crashed}+1$ $mod(n)$ = leader) until (c is correct) } is elected.
 % Recovery after the unexpected failure; !!!!!!!!!!!!!Write a pseudocode too!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 The new leader has two main blocks to complete. The first one is to explore what did the previous leader and continue the interrupted protocol by finally providing a correct $ack$ or $nack$ answer to the application. The recovery algorithm was already described in section about \emph{Failure Detection}. \\
  
  By interaction within the control plane, a controller can learn about the changes applied on a switch and update its local variables. Furthermore, once the leader$_\pi$, on the \emph{control plane} receives the notifications from C[0] to some C[k], it can easily count what should be installed.%%%%%%%%%%%%%%%%%%%%Explain how it counts %%%%%%%%%%%%%
-  The roll-out of the installation: each leader having gathered the notifications from C[0] to C[k], for some k where its policy $\pi$ is placed, the leader can easily count if it should continue with installation or not.
-To see how it is done we have to complete a bit the definition of the lexicographical order:
+  The roll-out of the installation: each leader having gathered the notifications from C[0] to C[k], for some k where its policy $\pi$ is placed, can easily count if it should continue with installation or not.
+To see how it is done we have to complete a bit the definition of the lexicographical order, which is now regarded on the whole set of consensus objects, and not just locally as before:
 $(k,prod,id)<(k',prod',id') \Leftrightarrow $
 \begin{enumerate}
 \item $k<k'$ or if $k=k'$ then 
@@ -408,10 +408,11 @@ $(k,prod,id)<(k',prod',id') \Leftrightarrow $
 \end{enumerate}
 Where $k$ is the identifier of the consensus object, $prod$ the number of policies proposed by the controller with identifier $id$. The definition is correct because each contorller has different id and two updates proposed from the same controller can not be placed in the same object, because we assumed the controllers to work sequentially,\emph{i.e.,} accept next update proposition only when the latter has been already completed (with $ack$ or $nack$).
 %
- 
+%?????????????????? What happens if there are redundant policies in
+%?????????????????? the next consensus objects?
 \subsection{Consensus object implementation}
 How then to implement a \emph{consenus object} in \emph{OpenFlow} ? \\
-For each switch, for this model we impose that there were at least two \emph{flow tables}. The enumeration of the \emph{flow tables} starts with zero. Depending on the system requierements we cas set on each switch k \emph{flow tables} where we will put the consensus objects. For simplicity we assume here two things. \emph{Firstly,} on each switch there is the same number of \emph{consensus objects.} Remark that we can easily avoid this assumption by the primitive which informs the \emph{control plane} about the number of consensus object/ the total number of consensus objects in this switch. This can easily be done using the \emph{OpenFlow} protocol controller-to-switch messages of type \textbf{Read-state}. It is for the reasons of simplicity we omit this case. \emph{Secondly,} we assume that once all of the \emph{consensus objects} are full, the system informs about it the \emph{control plane} which:
+For each switch, for this model we $impose$ that there were at least two \emph{flow tables}. The enumeration of the \emph{flow tables} starts with zero. Depending on the system requierements we cas set on each switch,by default, k \emph{flow tables} where we will put the consensus objects. For simplicity, we assume here two things. \emph{Firstly,} on each switch there is the same number of \emph{consensus objects.} Remark that we can easily avoid this assumption by the primitive which informs the \emph{control plane} about the number of consensus object/ the total number of consensus objects in this switch. This can easily be done using the \emph{OpenFlow} protocol controller-to-switch messages of type \textbf{Read-state}. It is for the reasons of simplicity we omit this case. \emph{Secondly,} we assume that once all of the \emph{consensus objects} are full, the system informs about it the \emph{control plane} which:
 \begin{enumerate}
 \item stores all the requests received in the meantime in a buffer or local memory
 \item each controller sends a bundle message requesting the deletion of rules in \emph{flow tables} being implemented as a \emph{consensus} object\footnote{so as not to broadcast the message in a total disorder there are two ways of implementation:
@@ -421,47 +422,55 @@ For each switch, for this model we impose that there were at least two \emph{flo
 \end{enumerate}
 In both cases, if a contorller goes down, thanks to the \emph{failure detector} the switch with \emph{id+1 mod n}, where n is the number of controllers ,takes over this task . 
 }
-\item restarts only when all correct contorllers learns about the "cleaning" in the \emph{data plane}. 
+\item restarts only when all correct controllers learn about the "cleaning" in the \emph{data plane}. 
 \end{enumerate}
-Now we can describe the implementation of the \emph{consensus objects} on the \emph{data plane}. On each switch the \emph{consenus objects} are implemented in tables from 0 to k-1.
+Now we can describe the implementation of the \emph{consensus objects} on the \emph{data plane}. On each switch the \emph{consenus objects} are implemented in flow tables from 0 to k-1.
+%- an implementation of consensus objects in Openflow
 \begin{algorithm}
   \caption{Flow Table Initialization}\label{FTInit}
   \begin{algorithmic}[1]
       \For{\texttt{tables 0 to k-1}}
-        \State Match field $\leftarrow$ ANY
+        \State Match field $\gets$ ANY
         \State $priority\gets\infty$
         \State Instructions$\gets$ Goto-Table $k$
       \EndFor
   \end{algorithmic}
 \end{algorithm}
-First remark is the fields: \emph{counters, timeouts} and \emph{cookies} are set to default values. In fact we won't use them, but all we need is to define correctly according to the \emph{OpenFlow} specification. Secondly, let's explain the choice of the parameters. The \emph{match field} is matched against a packet. If the packet matches the flow entry, the highest priority is chosen and the prescribed instructions and actions take effect at the and of pipeline processing. In our case, we wildcard the packets, it means that the \emph{match field} matches each packet. The priority is set to $\infty$, because otherwise, when the consenus object is filled with new updates, then there might exits a priority greater then we specify by default for the table. It would mean that if there comes a packet matching to both flow entries (the deafault one and the second one with higher priority), then a packet would be processed by this policy violating the \emph{per-packet} consitency property. We think that programming the $\infty$ value would not cause any problems. 
+First remark is the fields: \emph{counters, timeouts} and \emph{cookies} are set to default values. In fact we won't use them, but all we need is to define the tables correctly according to the \emph{OpenFlow} specification. Secondly, let's explain the choice of the parameters. The \emph{match field} is matched against a packet. If the packet matches the flow entry, the highest priority is chosen and the prescribed instructions and actions take effect at the and of pipeline processing. In our case, the first flow entry $e$ wildcards the packets. It means that the \emph{match field} matches each packet. The priority is set to $\infty$, because otherwise, when the consenus object is filled with new to-be-installed updates, then there might exits a flow entry also wildcarding all packets, but with priority greater then we specify by default for $e$. It means that if there comes a packet matching to both flow entries (the default one $e$ and the second one with higher priority), then a packet would be processed by the to-be-updated policy violating the \emph{per-packet} consitency property. More than that, a packet might be processed, therefore, according to not yet installed forwarding path.
+By setting the priority to $\infty$ the OpenFlow protocol ensures, that the rules contained in a consensus object flow tables are invisible for any packet, and therefore do not affect it. It is due to the $Goto-table$ instruction.
+Apart from this, we think that programming the $\infty$ value would not cause any problems to programmers. 
 %those talbes, or rather their \emph{flow entries} would be considered as \emph{table-miss} entries. In general, \emph{table-miss} flow entires specifies how to process the unmatched packets by any other flow entries before. And it matches ANY packet and its priority is set to 0. It also contains different features then other flow entires\footnote{for more detailed description ref. \emph{OpenFlow} spec}. All the tables are filled out in the same manner for simplicity. When we will use the \emph{compare(addr,old)} abstract to implement the CAS on them, so as to set the \emph{old}, \emph{i.e.}, the expected value of the flow entry with those data.
 \\
-Now as we see, the above defined tables will serve for \emph{consensus objects}. The \emph{Goto-Table} instruction guarantees that no packet will be affected by the update rules contained in those tables.
 % explain in more details how the consensus object works
-Firstly a controller creates a bundle with its specific id, wraps the operations to perform and ends with a commit message. After pre-validating a bundle so as to avoid most of the errors it sends it to a given \emph{consensus object.} How is constructed our bundle? The operations it contains are the following: $\lbrace$ \emph{CAS(addr, old, new), write(addr$_1$, k$_1$), ..., write(addr$_m$, k$_m$)} $\rbrace$. The \emph{write} operations will contain all the update rules specified by the demanded update. To keep a desired order we impose that the 
+Let's look more closely how to exploit the advantages obtained by using this construction.
+Firstly, a controller creates a bundle with its specific $id$, wraps the operations to perform and ends with a commit message. After pre-validating a bundle so as to avoid most of the errors it sends it to a given \emph{consensus object.} How is constructed our bundle? The operations it contains are the following: $\lbrace$ \emph{CAS(addr, old, new), write(addr$_1$, k$_1$), ..., write(addr$_m$, k$_m$)} $\rbrace$. The \emph{write} operations will contain all the update rules specified by the demanded update. To keep a desired order we impose that the 
 \emph{write(addr$_l{_{i_1}}$, k$_{l_{i_1}}$)} to 
-s\emph{write(addr$_{l_{i_j}}$, k$_{l_{i_j}}$)} contains only the rules form the i$^{th}$ policy update.
+\emph{write(addr$_{l_{i_j}}$, k$_{l_{i_j}}$)} contains only the rules form the i$^{th}$ policy update.
   
 %- an algorithm for installing updates: what a controller does once it linearized some requests.
 %
-
-At the begining when each controller establishes a connection with each switch in the \emph{data plane} it sets a \emph{flow monitor} on the consensus object flow tables. The \emph{flow monitor} serves to call a contorller about the change in a consensus object's content, so in its flow table. It is possible that the communication band is overloaded, in reality, but the OpenFlow already knows how to acknowledge the contorllers. On the other hand, we also dispose of the communication between the controllers, so that even in case of congestion on the bandwidth between the two \emph{planes} the common knowledge about the consensus object's state is "alive", can be verified. 
- By this mechanism each controller would get to know with more accuracy the first free consensus object's number. 
-When the switch using responds for the \emph{bundle} implementing CAS, then the controller taking care of the installation of the requested policy using the \emph{OpenFlow} protocol. \\
-Now we are ready to see the what does the controller once it has learned about the \emph{linearized} set from the consensus objects from 0 to some $k'$, where the controller's request is in come C[k] with k$<k'$:
+%%% The connection establishment at the beginning of the working of %%% the system
+At the begining when each controller establishes a connection with each switch in the \emph{data plane} and sets a \emph{flow monitor} on the consensus object flow tables. The \emph{flow monitor} serves to call a controller about the change in a consensus object's content, so in its flow table. It is possible, in reality, that the communication band is overloaded, but the OpenFlow already knows how to acknowledge the controllers about it. On the other hand, we also dispose of the communication between the controllers, so that even in case of congestion on the bandwidth between the two planes the common knowledge about if the consensus object's state is accessible for the slower(backwarded) controllers, and can be caught up with.
+By the communication on the control plane each controller would get to know with more accuracy the first free consensus object's number.
+\\ 
+When  the switch repsponds $true$ for the $bundle$, implementing CAS, in one of its  consensus object C[$k$] the leader can, after collecting all $linearized$ from all the consensus objects with index less then $k$, finally proceed with installation.\\
+Now we are ready to see the what does the controller once it has learned about the \emph{linearized} set from the consensus objects from 0 to some $k'$, where the controller's request is in come C[$k$] with $k<k'$:
 \begin{algorithm}
- \caption{Installation}
+ \caption{Installation ($\pi\in$C[k])}
  \begin{algorithmic}[1]
- \State inst $\gets$ $count(linearized, request)$
+ \ForAll{C[$j$]$\nsubseteq linearized$}
+ 	\State send to the corresponding switch \textbf{Read-State} message
+ \EndFor
+ \Comment{once the expected answers have arrived}
+ \State inst $\gets$ $count(linearized, \pi)$
  \If { inst = true}
- 	\ForAll{ s,switch concerned by the update}  send $installationRequest(rules(s))$
+ 	\State $linearized\gets \pi$
+ 	\ForAll{ s, switch concerned by the update}  send $installationRequest(rules(s))$
  	\EndFor
  \Else { send $nack(request, reason)$ to the application}
  \EndIf
  \end{algorithmic}
 \end{algorithm}
-% --count description
 The elements of the list should have the following structure:\\
 struct \texttt{elem\_list}$\lbrace$
 \begin{enumerate}
@@ -472,7 +481,14 @@ struct \texttt{elem\_list}$\lbrace$
 \item int consObjNb;
 \end{enumerate}
 $\rbrace ;$\\
-For the reasons of the specific software demands the \texttt{elem\_list} can contain other fields, but those five are mandatory.
+For the reasons of the specific software demands the \texttt{elem\_list} can contain other fields, but those five are mandatory.\\
+% Short description of the structure
+$\bullet instSucceded$ integer is assigned with its leader's $prod$ number. Its role is to say how many installation does the leader executed before. \\
+$\bullet id$ is just the leader's $id$.\\
+$\bullet pu$ field is the $policy$ structure, storing the policy actually proposed. The three above fields are assigned already when the controller receives the request.\\
+$\bullet inst$ says if the policy can be or was already installed.\\
+$\bullet$ $consObjNb$ is the consensus object, where $pu$ is stored.\\
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % define policy structure!!
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -483,24 +499,38 @@ For the reasons of the specific software demands the \texttt{elem\_list} can con
 	\Procedure{count}{\texttt{elem\_list}[] list,\texttt{elem\_list} element}
 	\If { $element \in$ list}
 		\State k $\gets$ take index of $element$ in the list
+	\Else { send $error$:"no such element in the list"}	
+	\EndIf
+	\If { compose(installed, list[i])}\Comment{$installed$ is a list of \texttt{elem\_list}}
+		\State last$\gets$ the latest element from $installed$
+		\State last$_{idx}\gets$ index of last in $list$
+		\State \For { i from last$_{idx}$ to end of $list$}
+			\If{ compose(list[++i], installed)}
+				\State list[i].inst = $True$
+				\State installed.append(list[i])
+			\Else {list[i}.inst = false}			
+			\EndIf	
+		\EndFor		
+		%\State list[i].instSucceded ++, not necessary
+		%\State list[i].inst = true
+		\State $installed$.append(list[i])\Comment{if it was not yet appended} 
+			\State \Return $True$
+	\Else \Return $False$			
 	\EndIf
 	\For { i in 0 to k}
 		\If { list[i].inst = false}	
-
-			\If { compose(installed, list[i])}\Comment{$installed$ is a list of \texttt{elem\_list}}
-				\State list[i].instSucceded ++
-				\State list[i].inst = true
-				\State $installed$.append(list[i])
-			\EndIf
+			
 		\EndIf
-	\EndFor
-	
+	\EndFor	\\
+	\Return $False$
 	\EndProcedure
 \end{algorithmic}
 \end{algorithm}
-
-Remark the \emph{list} is sorted according to the \emph{lexicographical order} defined for policies contained in \emph{consensus objects.} \\
+% --count description
+The function returns $True$ when the policy from $element$ can be installed not violating the compositionality of the policies. Lines 2 and 3 are just to ensure that the to-be-installed policy is in the list and to take its position\footnote{remind that the list proposed to some C[k] may contain more than one element}. In the $for$ loop 
 %count description--
+Remark the \emph{list} is sorted according to the \emph{lexicographical order} defined for policies contained in \emph{consensus objects.} \\
+
 %--compose description
 compose(\texttt{elem\_list}[] installed,\texttt{elem\_list} policy):
 \begin{enumerate}
@@ -508,7 +538,10 @@ compose(\texttt{elem\_list}[] installed,\texttt{elem\_list} policy):
 \item else return true
 \end{enumerate} 
 %compose description--
-\section{Proofs of the algorithms}
+\section{Proofs of the properties}
+% Mention properties of which objects!!!!!
+\subparagraph{Wait-freedom}
+\subparagraph{Sequential compositionality}
 %
 %
 \section{Conclusion}
