@@ -10,6 +10,8 @@
 \usepackage{algorithm}% http://ctan.org/pkg/algorithm
 \usepackage{algpseudocode}% http://ctan.org/pkg/algorithmicx
 
+%\usepackage{multicol}
+%\setlength{\columnsep}{1cm}
 \MakePerPage{footnote}
 \DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
 
@@ -18,10 +20,9 @@
 \date{\today}
 \begin{document}
 \maketitle
-
+%\begin{multicols}{2}
 \subsection*{Abstract} Software-Defined Networking (SDN) is a new design of network architecture. The key idea is to separate  the network management \emph{control plane} from the switches, \emph{data plane}, which take care of the delivery of packets, and logically centralize it.    \\
 This construction enables easier management of the updates of the system.\\
-
 There are different models of SDN yet proposed. In this case, we have adopted a distributed \emph{control plane} made of a number of entities called \emph{controllers}. This choice is justified, because if there was only one all-powerful controller it might fail at some moment and the system with it. When model involves a set of independent controllers we have more robustness if several of them fails.
 \\
 One of the challenges to face in SDN is to find consistent mechanisms for installing updates on the \emph{data plane} coming from the applications. This is a so-called \emph{concurrent policy composition}, the CPC problem, where \emph{policy}, roughly speaking, is set of recipes for the \emph{data plane} how to modify and where to forward incoming packets. The problem becomes not trivial when there are many concurrent update requests that \emph{conflict}. Synchronization on the \emph{control plane} is then necessary to solve the CPC problem. 
@@ -35,7 +36,7 @@ The SDN paradigm simplifies the network management and makes easier any software
 % Possible models high-level implementaition of SDN
 This opens opportunities of implmentations of each part in SDN starting with the \emph{data and control planes}.
 % Our model assumptions
-In this paper we assume 
+%In this paper we assume 
 % High-level research topics
 There are five main abstractions to make the vision of SDN more realisitic\cite{Casado:2014:ASN:2661061.2661063} . In this paper we deal with distributed updates the other will be presented in section 2.\\ 
 Faced with concurrent requests, \emph{i.e.,} demands of installation of new policy updates on the \emph{data plane}  from the applications, the \emph{control plane} has to dynamically decide which updates are consistent with already installed policies.
@@ -45,21 +46,24 @@ The problem considered in this paper is to find a protocole for the \emph{contro
 \subsection{High-level intuitive model used}
 % Rough model
 As it was already said the SDN is split in two different independent parts. One of important tasks is to find the implementations of the model which will be robust against the failures, simple, providing high performance of the system in terms of correctness, enabling fast and correct policy update implementation.
-That is why a distributed \emph{control plane} model seems as the most suitable one. When it comes to the \emph{data plane}, we assume that no new switch can join the network and no switch can fail, \emph{i.e.}, the network is \emph{static topologically}. 
+That is why a distributed \emph{control plane} model seems as the most suitable one. In a model with more controllers, there is a place for concurrency, so parallelism and for failure handling. 
+The \emph{data plane} is made of set of switches connected with each other by $links$. We assume that no new switch can join the network, no switch can fail and that the links cannot crash, \emph{i.e.}, the network is \emph{static topologically}. 
   
 % interface for the app
-The interface we propose for the application is the response of \emph{ack}, if the updated was installed, and \emph{nack}, in case the update was rejected. We also add some information in \emph{reason} field so that which may contain some useful feedback information for the application about the state of the system. It can also be empty. We leave the implementation to the programmers according to the requirements of the system they program.
-Thanks to the CPC abstraction we are provided this transactional interface.
+The interface we propose for the application is the response of \emph{ack}, if the updated was installed, and \emph{nack}, in case the update was rejected. We also add some information in \emph{reason} field which may contain some useful feedback information for the application about the state of the system. It can also be empty. We leave the implementation to the programmers according to the requirements of the software. This transactional interface is provided thanks to the CPC abstraction.
 %Motivation for this model 
 
 %then be more precise, what are the properties we want to guarantee
 % per-packet consistency
-Also what we want to provide for the system is that not only the application sees the events performed by the system as sequential but also the traffic is affected by new updates in this manner. This is a so-called \emph{per-packet} consistency property\cite{Reitblatt:2012:ANU:2342356.2342427}. The main idea here is ensure that every packet passing through the network will be delivered only using one global policy. Imagine a packet already beeing in the network and while it has not yet been transported to its destination, there is a new update installed in the whole system. Then we want to guarantee that the given packet will not be affected by this new update and that each new entring packet will follow already this new policy. In other words, a packet is never processed by the mixture of two different policy updates.  
+Also what we want to provide for the system is that not only the application sees the actions performed by the system ($acks$ and $nacks$) as sequential, but also the traffic is affected by new updates in this manner. This is a so-called \emph{per-packet} consistency property\cite{Reitblatt:2012:ANU:2342356.2342427}. The main idea here is ensure that every packet passing through the network will be delivered only using one global policy. Imagine a packet already beeing in the network and while it has not yet been transported to its destination, there is a new update installed in the whole system. Then we want to guarantee that the given packet will not be affected by this new update and that each new entring packet will follow already this new policy. In other words, a packet is never processed by the mixture of two different policy updates.  
 % why the synchronization and where is the problem?
-So again, another problem appearing is how to install the updates in order to keep the \emph{per-packet} consistency. Actually, the solution states that the installation should be performed, firstly, on the \emph{internal ports} (not receiving a packet from the outside of the network) and at the end on the \emph{ingress ports} (connected with outside network). In \cite{Reitblatt:2012:ANU:2342356.2342427} the model is designed for one controller but still it applies to multiple controllers set, too.
+So again, another problem appearing is how to install the updates in order to keep the \emph{per-packet} consistency.
+%%%  And even more, the model tries to provide sequential 
+%%% compositionality of histories
+ Actually, the solution states that the installation should be performed, firstly, on the \emph{internal ports} (not receiving a packet from the outside of the network) and at the end on the \emph{ingress ports} (connected with outside network). In \cite{Reitblatt:2012:ANU:2342356.2342427} the model is designed for one controller but still it applies to multiple controllers set, too.
 %Motivation to use this model 
 The advantages we gain using this abstract are that  we prevent the occurence of the loops, packet loss and ambiguity in packet delivery. 
-Also we obtain invariants for the \emph{traces}\footnote{a \emph{trace} of the packet is, intuitively, a sequence of pairs (\texttt{packet\_modif}, switch), showing the path a packet traveled and the modifications the packet went through} of packets.
+Also we obtain invariants for the \emph{traces}\footnote{a \emph{trace} of the packet is, intuitively, a sequence of pairs (\texttt{packet\_modif}, switch), showing the path a packet travelled and the modifications the packet went through} of packets.
 %The distributed updates proposed by the applications confronts us with problems like how to consistently 
 %Let's now describe more the CPC problem. 
 More detailed design's description of the SDN is in section 2. 
@@ -72,8 +76,8 @@ More detailed design's description of the SDN is in section 2.
 \section{SDN model and its abstractions}
    Before we will introduce the main problems to tackle in the SDN let's take a brief look on the high-level architecture and new perspectives given by this paradigm.
 %High-level overview   with comaprison to the current
-% internet construction
-The principal idea, as said before, is to decouple the management of the network from the transporting network. In comparison to the current internet model, where it is the task of routers to count the shortest path from itself to each point in a graph via Dijkstra algorithm. When the situation changes, \emph{e.g.}, the delivery cost between two routers changes, new switch joins the graph, or crashes, then at any change, the \emph{flow tables} the routers has must be recalculated via the communication with its neighbours. So on the high-level, each router being linked with other routers, has the software witch provides the calculation of the stated in advance policies like \emph{shortest-path} or others. To influence load balancing  in the network using some outside program would imply a need in changing the whole underlying hardware. In short, the today's network is very rigid, constraint and inflexible for any policy network updates.
+% internet construction: the modern and older one
+The principal idea, as said before, is to decouple the management of the network from the transporting network. In comparison to the current internet model, where it is the task of routers to count the shortest path from itself to each point in a graph via Dijkstra algorithm. When the situation changes, \emph{e.g.}, the delivery cost between two routers changes, new switch joins the graph, or crashes, then at any change, the \emph{flow tables} the routers has must be recalculated via the communication with its neighbours. So on the high-level, each router being linked with other routers, has the software witch provides the calculation of the stated in advance policies like \emph{shortest-path} or others. To influence load balancing or ,in general, to introduce any other network policy configuration, using some outside program would imply a need in changing the whole underlying hardware. In short, the today's network is very rigid and limited for any policy network updates.
 That is why there comes a question of how to generalize the 
 networks hardware so that it provides more flexibility in 
 installing new forwarding updates, and separate the software 
@@ -90,7 +94,7 @@ To prevent the reader from thinking that it simplifies the model too much, think
 % Role of the control plane 
 The control plane receives the update requests from the exterior applications and, if the proposed policy is consistent with already installed one, it installs it and acknowledges the application. If the update is not consistent, it conflicts then the request is rejected and a \emph{nack} is send to the application. \\
 % More details about the implementation
-As it was already said the \emph{control plane} is, in our case, a distributed, fault-prone, eventually synchronous system consists of the entities called \emph{controllers}. Thanks to the communication between themselves and with switches, they can actually collect the knowledge about the actualisations and perform actions maintaining the corectness of the system. 
+As it was already said the \emph{control plane} is, in our case, a distributed, fault-prone, eventually synchronous system consisting of the entities called \emph{controllers}. Thanks to the communication between themselves and with switches, they can actually collect the knowledge about the actualisations and perform actions maintaining the corectness of the system. 
 %  Motivation for the choice --- maybe not as useful now :)
 
 
@@ -102,8 +106,8 @@ Having already presented some main overview on the model's construction, to make
 % Short description of each aspect
 \begin{enumerate}
 \item \emph{Network-wide structures:}
-In order to maintain consistent versions of network-wide structures such as topology, traffic statistics and others, one need to process the data from the whole network. In the traditional network vision, all relies on the distributed algorithms acting on the whole network. In general one need many ressources and the main problem is that the switches act in a "blind" way, they can know localy what happens and  to get this information they need to communicate with each other and at any time they recieve the message, they are about to recompute their data and broadcast it in the neighbourhood. \\
-In SDN all the knowledge about the state of the entire  system like host locations, link capacities, the traffic matrixes, etc. are stored in \emph{Network Information Base} (NIB). Thus, after same change in the topology of the network, there is a need to recompute some data to maintain the desired structures that keep track of the information, the controllers can reuse the knowledge from NIB. If there is a need for the controllers to communicate with themselves, there is still a necessity to use distributed algorithms. However, the small number of controllers provides faster convergence than in the traditional setting.  
+In order to maintain consistent versions of network-wide structures such as topology, traffic statistics and others, one need to process the data from the whole network. In the traditional network vision, all relies on the distributed algorithms acting on the whole network. In general, one need many resources (information) and the main problem is that the switches act in a "blind" way, they can know localy what happens and to get this information they need to communicate with each other and at any time they recieve the message, they are about to recompute their data and broadcast it in the neighbourhood. \\
+In SDN all the knowledge about the state of the entire  system like host locations, link capacities, the traffic matrixes, etc. are stored in \emph{Network Information Base} (NIB). Thus, after same change in the topology of the network, there is a need to recompute some data to maintain the desired structures that keep track of the information. The controllers can reuse the knowledge from NIB. If there is a need for the controllers to communicate with themselves, there is still a necessity to use distributed algorithms. However, the small number of controllers (in comparison to the number of switches) provides faster convergence (in terms of knowledge and regaining the balance in the system after crash) than in the traditional setting.  
 \item \emph{Distributed updates:}
 %General description
 The SDN \emph{control plane} has to manage the updates on multiple switches in a consistent way so that it would not produce loops, packet's loss or ambigous rules. 
@@ -115,7 +119,7 @@ The puropse of it is that we want to maintain the invariants such as access cont
 %What are the challenges for distribution updates
 % Why is it necessary?
 The distributed updates problem shows more visible in several situations that may possibly happen in the "real-life" networks.
-On the high-level, each change in the policy caused by the necessity of quick reaction like a change in the \emph{data plane's} topology, or just a simple modification of the rules, needs a consultation of the current state of the system and a synchronization among controllers to reach an agreement. To coordinate the operations between controllers, provide the correct roll out of the modifications, and finally to when everything is installed to just "turn-on" the updated network requiers some effort.
+On the high-level, each change in the policy caused by the necessity of quick reaction like a change in the \emph{data plane's} topology, or just a simple modification of the rules, needs a consultation of the current state of the system and a synchronization among controllers to reach an agreement. To coordinate the operations between controllers, provide the correct roll out of the modifications, and finally to when everything is installed to just "turn-on" the updated network requieres some effort.
 One of the possible events occuring is when some switch or link crashes, and the \emph{control plane} has to dynamically decide (actually it is the external application which proposes the new update to the control plane) how to reinstall all the network so that there were no rules leading to/by the crashed switch(es)/link(s). 
 Other example is when, thanks to the additional knowledge from the \emph{OpenFlow}, we learn that some parts are overloaded with packets. Thus it will be natural for the administrator to balance the load what implies a change in rules.
 On the other hand, for theoretical reasons, one might want to search out the best policies' configuration while modifying the flow on different ingress ports and observing the possible behaviour of the network.
@@ -148,7 +152,6 @@ The \emph{state} of the network is characterized by a \emph{port
   queue} $Q_i$ and a \emph{switch function} $S_i$ associated with
 every port $i$.
 A port queue $Q_i$ is a sequence of packets that are, intuitively, waiting to be processed at port $i$.
-%\mcnote{The definition of switch function is not very clear to me. I would think that it reads from a queue, processes the packet and places it to another queue. Also, located packet seems like an important concept but it is only introduced in an indirect way.}
 A switch function is a map $S_i:\;\Pi\rightarrow \Pi\times P$,
 that, intuitively, defines how packets in
 the port queue $Q_i$ are to be processed.
@@ -164,27 +167,27 @@ Let's look on the data plane as on the graph. Then when a packet is \emph{forwar
 We say that two paths aren't \emph{conflicting} if one of the following situations is satisfied:
     \begin{enumerate}
     \item \emph{$path_1$} $\cap$ \emph{$path_2$} = $\emptyset$
-    \item $\exists i,j:path_1(i) = path_2(j) $ and $path_1$(end)=$path_2$(end) which means that the paths cross but they have the same \emph{endpoint}, so we don't care about the trace difference, but we are happy that our packet will finally reach the desired endpoint.
+    \item $\exists i,j:path_1(i) = path_2(j), path_1(i) = path_2(j),\ldots, path_1(end)=path_2$(end) which means that the paths cross but they have the same \emph{endpoint}, so we don't care about the trace difference, but we are happy that our packet will finally reach the desired endpoint.
     \end{enumerate}
-    In practice, the endpoints are stated are known, so during the verifaction a controller can actually decide whether to consider two paths as being in conflict or not.
+    In practice, the endpoints stated are known, so during the verifaction a controller can actually decide whether to consider two paths as being in conflict or not.
     The list above is exhaustive, because it covers all the situations when there are some sequence of common ports used by both packets, or that they cross many times, but finally reach the same port. Otherwise we say that two paths \emph{conflict}.\\
     A policy $\pi$ is characterized by domain($_pi)\subseteq\Pi$, a \emph{priority level}, $pr(\pi)\in\mathbb{N}$ and the set of \emph{valid paths}. A new policy update does \underline{not} have to be apply for each ingress ports. It a relaxation of what is in \cite{CKLS15}, where a policy should contain at least one valid path for each ingress port.
     
-We say that two policies $\pi_1$ and $\pi_2$ \emph{conflict} if \emph{dom($\pi_1$)} $\cap$ \emph{dom($\pi$)} $\neq \emptyset$ \underline{and} pr($\pi_1$)=pr($\pi_2$) \underline{and} their paths conflict. Otherwise they are called \emph{independent}.
+We say that two policies $\pi_1$ and $\pi_2$ \emph{conflict} if \emph{dom($\pi_1$)} $\cap$ \emph{dom($\pi_2$)} $\neq \emptyset$ \underline{and} pr($\pi_1$)=pr($\pi_2$) \underline{and} their paths conflict. Otherwise they are called \emph{independent}.
 If a packet $pk\in dom(\pi_1) \cap dom(\pi_2)$ and $pr(\pi_1)>pr(\pi_2)$ then $pk$ is processed always by the policy with higher priority. 
-If two policies does not conflict we say that they \emph{compose.} So for any update request, we will allow to take place only those which composes with what was installed before. Differently, an update must be rejected.  \\
+If two policies does not conflict we say that they \emph{compose.} So for any update request, we will allow to take place only those which composes with what was installed before. On the contrary, an update must be rejected.  \\
 \textbf{Traffic} Again we use the model from \cite{CKLS15} where the traffic is modeled only using to actions:
 \begin{enumerate}
 \item \emph{inject(pk,j)} : where the packet $pk$ enters the network at $j^{th}$ ingress port, by being added to the end of the queue $Q_j$ becoming $Q_j.pk$
 \item $forward(pk,i,pk',j), j\in P$ : the first element of the queue of the $i^{th}$ port it dequeued from $Q_i$, the actions are applied to $pk$ so that it becomes $pk'$ and it is send through the link to the $j^{th}$ port and enqueued to $Q_j$
 \end{enumerate}
-Thanks to the traffic events we can now define what is a trace. A \emph{trace} is a sequence generated by a packet entering the network denoted as $\rho_{ev,H}$, where $ev = incject(pk,j)$ in a history H. Note that the sequnce is made of forward events $forward(pk_i,j_i,pk_{i+1},j_{i+1})$, where $pk_0=pk \textit{and} j_0=j$, until $j_{i+1} \in\lbrace World, Drop \rbrace$. Then we say that the trace \emph{terminates}.
+Thanks to the traffic events we can now define what is a trace. A \emph{trace} is a sequence generated by a packet entering the network denoted as $\rho_{ev,H}$, where $ev = incject(pk,j)$ in a history H. Note that the sequnce is made of forward events $forward(pk_i,j_i,pk_{i+1},j_{i+1})$, where $pk_0=pk \textit{ and } j_0=j$, until $j_{i+1} \in\lbrace World, Drop \rbrace$. Then we say that the trace \emph{terminates}.
 We also say that a trace $\rho_{ev,H}$ = $(pk,j),(pk_1,j_1),...$ of $pk$ is \emph{consistent} with a policy $\pi$, if $pk\in dom(\pi)$ and $(j,j_1,...)\in \pi$ \cite{CKLS15}.
 \subsection{Concurrency and sequentiality}
-Dealing with multiple in some sense independent objects which have a common oprerational area we are faced with a notion of \emph{concurrent object}. A concurrent object is shared by processes. It is equipped with methods each process can invoke. The answer it receives is according to the state of the concurrect object at a time of calling a method. The state of the object after the call (s \emph{side-effect}) is also known.It is specified in a so-called \emph{sequential documentation.} What interests us here is its \emph{correctness} and \emph{progress}. But what does it mean for a concurrent object to be correct or to progress? Everything depends here on object.
+Dealing with multiple in some sense independent objects which have a common oprerational area we are faced with a notion of \emph{concurrent object}. A concurrent object is shared by processes. It is equipped with methods each process can invoke. The answer it receives is according to the state of the concurrect object at a time of calling a method. The state of the object after the call (\emph{side-effect}) is also known. It is specified in a so-called \emph{sequential documentation.} What interests us here is its \emph{correctness} and \emph{progress}. But what does it mean for a concurrent object to be correct or to progress? Everything depends here on object.
 In our case, the concurrent object will be the CPC abstraction. Receiving the concurrent requests it has to return a response $ack$ or $nack$ stating for \emph{yes} the update will take place, \emph{no} the update was rejected, respectively. Each action, the request and the response and also the traffic will be seen as sequential while maintaining the \emph{per-packet consistency}.
 To be more precise we are obliged to use more fomalisms.
-To model the executions and the traffic events we will use \emph{histories}. A history "saves" in its "memory" some considered actions that happend in the system. In our case, the history will be composed of two types of actions: request and  answer to the request (communication between the system and the application), and packet incject events (concerning the traffic). Observe that we are not interested in when will the packet leave the network, but only when it enters.
+To model the executions and the traffic events we will use \emph{histories}. A history "saves" in its "memory" some considered-by-the-model actions that happend in the system. In our case, the history will be composed of two types of actions: request and  answer to the request (communication between the system and the application), and packet incject events (concerning the traffic). Observe that we are not interested in when will the packet leave the network, but only when it enters.
 We will see the history globally (the actions in the whole network set) and locally $H|p_i$ on each controller.
 We say that a request $r$ \emph{precedes} $r'$ in a history $H$, $r<_Hr'$, if the invocation and response of $r$ are before the invocation of $r'$. Otherwise, we say that the requests are \emph{concurrent}. For the inject traffic event $ev$ we say that it \emph{precedes} (resp., $succeds$) a request $r$ in history H, $ev<_H r$, if $ev$ appears before invocation (resp., after response)  of $r$ in H. If it appears in between, so we do not have neither $ev\nless r$, nor $r\nless ev$, we say that an event $ev$ is concurrent to $r$. Also, two inject events $ev$ and $ev'$ on the same port in H are related by $ev<_Hev'$, if $ev$ \emph{precedes} $ev'$ \cite{CKLS15}.
 We say that a history $H$ is \emph{sequential} if there are no concurrent requests and events. H is \emph{well-formed} if every local controller's history is sequential. Two histories $H$ and $H'$ are equivalent, if for each controller p $H|p = H'|p$. 
@@ -199,14 +202,14 @@ Now we are ready to define the \emph{sequential compositionality} or, in other w
 \item completion of $H$ is equivalent to S
 \item $<_H\subseteq <_S$
 \end{enumerate}
-There might be many $S$ sets equivalent to $H$. The main idea here is to be able to shuffle/reorder some events in a legal way, to be able to see them as executed atomically. More about this task will be in the CPC section.
+There might be many $S$ sets equivalent to $H$. The main idea here is to be able to shuffle/reorder some events in a legal way, to be able to see them as executed atomically one-by-one. More about the implementation  will be in the CPC section.
 
 \section{Abstractions used}
 % Short intro
-The distributed choice o the control plane implies the possiblity to consider the failures and eventual synchrony, what would be useless in the case of just one all-powerfull controller. To make the controller-controller and controller-swich communication realistic and its implementation feasible we need to introduce different assumptions to the model. The abstractions specifies it in more detail.
+The distributed choice of the control plane implies the possiblity to consider the failures and eventual synchrony, what would be useless in the case of just one all-powerfull controller. To make the controller-controller and controller-switch communication realistic and its implementation feasible we need to introduce different assumptions to the model. The things to consider are the message-passing on both planes, how to detect any crashed controller and how to deal with the recovery. Other abstraction is for the entire model properties like per-packet consistency. How to implement the CPC is done by the universal construction and followed by consensus model implementation. 
 
 \subsection{Message-passing}
-There are three types of messages: one from outside, and inside two types: controller-controller and controller-switch. We can also discern between \emph{broadcasting} and a \emph{single message}. The former abstraction enables an entity to send a message to "all" from a specified group\footnote{in our case, "all" will refer to controllers, no matter who emits switch or controller} in just one atomic step. The latter will generally concern controller-switch communication. 
+There are three types of messages: one from outside, and two types inside : controller-controller and controller-switch. We can also discern between \emph{broadcasting} and a \emph{single message}. The former abstraction enables an entity to send a message to "all" from a specified group\footnote{in our case, "all" will refer to controllers, no matter who emits switch or controller} in just one atomic step. The latter will generally concern controller-switch communication. 
 We do not state nothing about the messages originating from outside. When they reach a controller, it starts processing it. For single messages and broadcast, we use the \emph{Best-Effort Broadcast(BEB)} model as proposed in \cite{Guerraoui:2010:IRD:1951643}. We expect a message to be eventually delivered. So after some finite amount of time even if the message was lost (what can happen more than once) it is finally delivered. In the model we propose we could even relax it a bit by saying that at least $f+1$ messages are eventually delivered\footnote{when it concerns a correct controller broadcasting a message}, where $f$ is the maximal number of faulty controllers. 
 %Properties
 The BEB has generally three properties:
@@ -219,9 +222,9 @@ In fact, we do not need the second condition, which reduces the redundancy, but 
 If a sender crashes then thanks to the failure detector the control plane learns it and one of the correct controllers will take over.
 \subsection{Synchronization and Partial synchrony}
 %Time and measuring the time
-$Time$ is one of the most important notions to capture in real (not just teoretical) distributed systems. On its definition and accuracy of measurement depends, in some sense, the local knowledge of an enitity about the global status in the considered environment. Furthermore, time counting makes the entities to progress even if, \emph{e.g., }the expected message does not arrive.
+$Time$ is one of the most important notions to capture in real (not just theoretical) distributed systems. On its definition and accuracy of measurement depends, in some sense, the local knowledge of an enitity about the global status in the considered environment. Furthermore, time counting makes the entities to progress even if, \emph{e.g., }the expected message does not arrive. It is due to the timeout mechanisms which (if there not logical clocks) make the process to take specific opreations.
 %What is in the model
-In the model we use a physical time to measure. It means that each controller has a clock. It uses it only to estimate the time for the sent messages and in case of a delay to resend.\\
+In the model we use a physical time to measure. It means that each controller has a clock. It uses it only to estimate the time for the sent messages. In case of a delay or crash it can easily figure out a defect or a reason of lack of response.\\
 %Synchrony and partial synchrony
 By \emph{partial} or \emph{eventual synchrony} we mean that \emph{most of the time}, the physical time bounds are respected \cite{Guerraoui:2010:IRD:1951643}. It is an adequate manner of perceiving the distributed systems in practice. We assume only that after some indetermined \emph{a priori} amomunt of time the selected assumptions hold. In some sense, we can regard the system as being synchronous most of the time, and otherwise it turns into an  asynchronous one.
 The situations when a time bound is not kept may be caused by, for example, lack of memory on the processing entity, link failure, link congestion.
@@ -533,7 +536,12 @@ compose(\texttt{elem\_list}[] installed,\texttt{elem\_list} policy):
 \item if policy conflicts\footnote{the conflict's definition is in chapter definitions. The implementation is according to the criteria found there.} with installed then return false
 \item else return true
 \end{enumerate} 
+The $compose$ function should not pose any problems for programmers in implementation with respect to the $conflict$ definitions proposed yet.
 %compose description--
+\subsection{Tagging}
+% What's a tag and what does it serves for
+% how use them to have per-packet const
+% multitagging and how it holds the properties?
 \section{Proofs of the properties}
 % Mention properties of which objects!!!!!
 \subparagraph{Wait-freedom}
@@ -544,4 +552,5 @@ compose(\texttt{elem\_list}[] installed,\texttt{elem\_list} policy):
 \bibliographystyle{plain}
 \bibliography{bibtex}
 
+%\end{multicols}
 \end{document}
