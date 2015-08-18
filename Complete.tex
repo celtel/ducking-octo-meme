@@ -1,4 +1,6 @@
 \documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
 \usepackage{amssymb}
 \usepackage{amsmath}
 \usepackage{mathtools}
@@ -6,7 +8,7 @@
 \usepackage{amssymb}
 \usepackage{perpage}
 %\usepackage{fullpage}
-
+\usepackage{amsthm}
 \usepackage{algorithm}% http://ctan.org/pkg/algorithm
 \usepackage{algpseudocode}% http://ctan.org/pkg/algorithmicx
 
@@ -14,6 +16,10 @@
 %\setlength{\columnsep}{1cm}
 \MakePerPage{footnote}
 \DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
+\newtheorem{lemma}{Lemma}
+
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
 
 \title{Synchronization and Concurrency in Software-Defined Networking}
 \author{Jan Celmer}
@@ -460,9 +466,9 @@ When  the switch repsponds $true$ for the $bundle$, implementing CAS, in one of 
 Now we are ready to see the what does the controller once it has learned about the \emph{linearized} set from the consensus objects from 0 to some $k'$, where the controller's request is in come C[$k$] with $k<k'$:
 \begin{algorithm}
  \caption{Installation ($\pi\in$C[k])}
- \begin{algorithmic}[1]
- \ForAll{C[$j$]$\nsubseteq linearized$}
- 	\State send to the corresponding switch \textbf{Read-State} message
+ \begin{algorithmic}[1]\label{Inst}
+ \ForAll{$s$ switches that are influenced by $\pi$}
+ 	\State send \textbf{Read-State} message
  \EndFor
  \Comment{once the expected answers have arrived}
  \State inst $\gets$ $count(linearized, \pi)$
@@ -470,6 +476,9 @@ Now we are ready to see the what does the controller once it has learned about t
  	\State $linearized\gets \pi$
  	\ForAll{ s, switch concerned by the update}  send $installationRequest(rules(s))$
  	\EndFor
+ 	\State await confirmation of the correct installation
+ 	\State if received send to the ingress ports new version-tag-stamping request and await confirmation
+ 	\State send $ack$ to the application
  \Else { send $nack(request, reason)$ to the application}
  \EndIf
  \end{algorithmic}
@@ -540,15 +549,99 @@ The $compose$ function should not pose any problems for programmers in implement
 %compose description--
 \subsection{Tagging}
 % What's a tag and what does it serves for
+A packet we regard here is made of two main parts: the $header$ and the $data$ fields. Only the former one called also the $tag$ can be modified by applying to it a set of actions specified by flow entries during the pipeline processing. The latter is as the name indicates, to keep the data to deliver and of which the content is left untouched.
 % how use them to have per-packet const
+In this model the tag contains also the field showing the version of the configuration of the system a packet should follow. Thanks to the per-packet consistency, there is a possbile "cooperation" between the tag and rules.
+% More details about the cooperation due to stamping and flow endtires
+How is it done? When a packet enters the network at the ingress port it is stamped with a current policy tag. At each internal port, due to the per-packet consistency, any switch is yet "acknowledged" with the new tag and knows which new rules to apply not forgetting the prior ones. In implementation of the installation it can be seen as a new \emph{match field} given for each flow entry, so that it matches still to possible older versions of the packets (so it does not violate the consistency, that is, the trace left by a packet can be identified with a certain composition of policies and the mix of two or more different policy compositions). 
+A new tag $k$ is imposed in the system when all composable policies from the C[$k$] consensus object were successfully installed.
+The implementation of the installation of any composable policy $\pi$ is a bundle of $FlowMod$ commands, more precisely the set of \textbf{Modify-State} messages send to the subset of $\pi$-influenced switches. \\
 % multitagging and how it holds the properties?
+The novelty of the model here is that we admit that there were multiple tags in the system. Indeed, the model proposed in \cite{Reitblatt:2012:ANU:2342356.2342427} provides that each switch from the network after the $two-phase$ installation will be configured to the next tag version. In our case, the system is treated more "locally". By this we mean, that if new policy is successfully installed on some set $S$ of switches, it is only $S$ to have the new tag version. Observe that this approach does not violate the $consistency$ condition, because each packet will be still processed by the only one composition of policies. Furthermore, suppose that a packet starting from the ingress port with a prior tag version reaches a switch with the latest tag (or just newer). To realize this abstraction with multiple tagging a software programmer has two options to chose, on the high-level:
+\begin{enumerate}
+\item $\lbrace$set of the paths generated after installation of $\pi'$ with new version tag in all the system $\rbrace$ = $\lbrace$ set of the paths generated after installation of $\pi'$ with new version tag only on some subset of switches $\rbrace$
+\item let $A$ = $\lbrace$ set of ingress ports $i$ not affected by the update $\rbrace$:
+$\bigcup\limits_{i\in A} gen(i)\cup\bigcup\limits_{i\notin A}gen(i)$
+\end{enumerate}
+The first point implies, that even if there was no change of the version in the whole system (but just in some part of it), it processes the load as if all the switches were affected with the new update version. The latter one considers a possibility for packets stamped with older version tag to be forwarded through the path before the installation of $\pi'$.  
+Both points are per-packet consistent, because the version does not influence the fact that a packet will be processed with $\pi_1\circ\ldots\pi_k$ or with $\pi_1\circ\ldots\pi_k\circ\pi'$, where $\pi'$ is a new update. However, it impacts packet's $trace$ and so the end-point port, before leaving the system (if a packet was not dropped before). The decision here depends on the system's specification.
+The implementation would be construct a priori a set of \emph{match fields} so that one of the two above specified software designs is realized. The bits on each match field would be then set to either match or not the older versions tag. In the latter case it follows that on a given switch a packet is processed with an older rule (because it was not deleted, and matches a set of packets in its domain), with older tag. Note that in this paper, for the reasons of simplicity, we allow the tag number to grow to infinity. 
+
+%--do not consider
+%$\forall s$ switch with new update $\forall p,i$ path $p$ originating from not updated ingress port $i$ either:
+%\begin{enumerate}
+%\item do not modify the rules generating the paths, or
+%\item use some refined \emph{match field} construction providing multitag and that the set of paths originated in all $i$ generated to be left unchanged
+%\end{enumerate}
+% do not consider--
 \section{Proofs of the properties}
+Other useful assumptions for the model for theoretical proofs, when time tends to infinity:
+\begin{enumerate}
+\item Every correct process receives infinitely many requests
+\item The EPFD sends also the current $status$ of a suspected controller. The $status$ is are the local variables a controller has.
+\item infinitely many times sent messages, from $p$ to $q$ correct controllers, are delivered infinitely many times to $q$. It means also that there exists a message that finally arrives to $q$.
+\end{enumerate}
+
 % Mention properties of which objects!!!!!
-\subparagraph{Wait-freedom}
-\subparagraph{Sequential compositionality}
+\paragraph{Correcteness} 
+By \emph{system correctness} we mean that no conflicting policy is installed.
+\begin{lemma}\label{Correctness}
+The algorithm \ref{Universal} with proposed implementation of consensus objects is $correct$. 
+\end{lemma}
+\begin{proof}
+Suppose that there was there is a conflicting policy $\pi$ installed. It means that in line 4 of \ref{Inst} the result was $true$. Remind that $installed\subseteq linearized$ is a sublist\footnotemark of $linearized$. 
+\footnotetext{a list $l=\lbrace l_i\rbrace$ is a subset of list $m=\lbrace m_i\rbrace$ if there exists a subsequence $\lbrace m_{k_i}\rbrace$ of elements from $m$: $m_{k_i}=l_i \forall i$, where $\lbrace k_i\rbrace\subseteq\mathbb{N}$. Note that the definition is for finite and infinite sequences.} Line 6 implies that $compose(installed,\pi)$ returned true, so no conflict with already installed policies. The $for$ loop 9-15 marks then the element containing $\pi$ as true. It means that having the knowledge from all consensus objects C[0] to C[k]$\ni\pi$, $\pi$ was composing,\emph{i.e.}, was not in conflict with all the preceding polices. Contradiction.
+\end{proof}
+\begin{remark}
+No matter when a given installation takes effect, it always has to consider previously proposed policies, and thanks to the $count$ function it will not be mistaken.
+\end{remark}
+\paragraph{Consensus Object Properties}
+\emph{Termination}: Thanks to the OpenFlow protocol, it informs the control plane when there was a decision taken in one instance of the consensus object. 
+\\
+\emph{Validity}: Follows from the protocol.
+\\
+\emph{Integrity}: When a process (controller) receives a request it searches for some free instance of the consensus object. Thanks to the CAS implementation it is ensured that the decision is taken only once.
+\\
+\emph{Agreement}: As in $integrity$, thanks to the CAS abstract the common agreement on each instance of the consensus object is guaranteed.
+\\
+\emph{Progress}: In fact, this property is particular for our model. By $progress$ as yet said, that eventually every requested policy is put in some consensus object. This is proven in the \ref{consistencyPC}.
+\paragraph{Recovery Algorithm}
+\emph{Strong Completeness}
+\\
+\emph{Eventual Strong Accuracy}
+
+\paragraph{CPC} \label{consistencyPC}
+Before proving the CPC properties let's prove the following:
+\begin{lemma}\label{per-packet consistency} The propsed construction ensures the \emph{unobservable update} and \emph{one-touch update} properties. As a conclusion the system is \emph{per-packet consistent}.
+\end{lemma}
+\begin{proof}
+By the algorithm \ref{Inst}, lines 9 and 10 we receive the \emph{unobservable update} and \emph{one-touch update} properties, respectively.
+\end{proof}
+\begin{lemma}
+Given implementation of CPC abstract, solves the CPC problem:
+\begin{enumerate}
+\item Consistency: \emph{$H'$ is sequentially composable}
+\item Termination: \emph{Eventually, every requested and correct controller answers with} ack or nack
+\end{enumerate}
+Where for every history $H$, $H'$ is its completion
+\end{lemma}
+\begin{proof}
+Thanks to the lemma \ref{per-packet consistency}, the $H'$ history can guarantee to place all inject events so that the packet traces corresponds to a given set of policy composition, while keeping the "time" order the packets entred the network. According to this, it is than easy to $complete$ the $H$ history so that it corresponds to the set of traces.
+The legality of $H'$ is due to the correctness from lemma \ref{Correctness}. Now it is time to give a recipe how to shift the  $request$ and $ack/nack$ events so that get 
+1. Let's take a history $H$. The thing to prove is that $\exists H'$, completion of $H$, being sequentially composable. It will be concluded thanks to the implementation proposed.
+\end{proof}
+\paragraph{Wait-freedom}
+\begin{lemma}
+Each process (controller, switch) is wait-free.
+\end{lemma}
+\begin{proof}
+Thanks to the properties of universal construction which is wait-free.
+\end{proof}
+\paragraph{Sequential compositionality}
 %
 %
-\section{Conclusion}
+\section{Conclusion and Future Work}
+\subsection{Tag complexity}
 \bibliographystyle{plain}
 \bibliography{bibtex}
 
