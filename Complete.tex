@@ -606,9 +606,7 @@ No matter when a given installation takes effect, it always has to consider prev
 \\
 \emph{Progress}: In fact, this property is particular for our model. By $progress$ as yet said, that eventually every requested policy is put in some consensus object. This is proven in the \ref{consistencyPC}.
 \paragraph{Recovery Algorithm}
-\emph{Strong Completeness}
-\\
-\emph{Eventual Strong Accuracy}
+For the recovery algorithm the things to prove are that it ensures the correct take-over and termination of a policy requested to some crashed controller. 
 
 \paragraph{CPC} \label{consistencyPC}
 Before proving the CPC properties let's prove the following:
@@ -623,19 +621,23 @@ Given implementation of CPC abstract, solves the CPC problem:
 \item Consistency: \emph{$H'$ is sequentially composable}
 \item Termination: \emph{Eventually, every requested and correct controller answers with} ack or nack
 \end{enumerate}
-Where for every history $H$, $H'$ is its completion
+Where for every history $H$, $H'$ is its completion.
 \end{lemma}
 \begin{proof}
-Thanks to the lemma \ref{per-packet consistency}, the $H'$ history can guarantee to place all inject events so that the packet traces corresponds to a given set of policy composition, while keeping the "time" order the packets entred the network. According to this, it is than easy to $complete$ the $H$ history so that it corresponds to the set of traces.
-The legality of $H'$ is due to the correctness from lemma \ref{Correctness}. Now it is time to give a recipe how to shift the  $request$ and $ack/nack$ events so that get 
-1. Let's take a history $H$. The thing to prove is that $\exists H'$, completion of $H$, being sequentially composable. It will be concluded thanks to the implementation proposed.
+Thanks to the lemma \ref{per-packet consistency}, the $H'$ history can guarantee to place all inject events so that the packet traces corresponds to a given set of policy compositions, while keeping the "time" order the packets entered the network. According to this, it is than easy to $complete$ the $H$ history so that it corresponds to the set of traces.
+The legality of $H'$ is due to the correctness from lemma \ref{Correctness}. \\
+Let $\lbrace ev_k\rbrace_{k=1,..,n}$, be a sequence of 
+inject events occured in the history until a given moment. Suppose 
+that we have $ev_1<_H\ldots <_Hev_n$.
+Let $pol(ev)$ be the set of lists of policies composing with the trace left by the packet, where $ev=inject(pk,j)$. Let's define that $pol(ev)\subseteq pol(ev')\Leftrightarrow \forall pc\in pol(ev) \exists pc'\in pol(ev'): pc\subseteq pc',pc$ is a sublist of $pc'$. Now cross out any concurrent with $ev$ policy from $pol(ev_1)$. This will not violate the trace because the "deleted" policy did not took effect. 
+Let's see if $H'$ is sequentially composable. But thanks to the \emph{per-packet consistency} we have that (abusing a bit the notation), $pol(ev_1)<_H<ev_1<\ldots <_H pol(ev_n)<_Hev_n$. To be more precise there exists a sequence of sublists $\lbrace pc_i\rbrace_{i=1,\ldots, n}: pc_1\subseteq\ldots\subseteq pc_n$,  $pc_i$ is already linearized and $pc_1<_H ev_1<_H\ldots <_H pc_n<_H ev_n$. 
 \end{proof}
 \paragraph{Wait-freedom}
 \begin{lemma}
-Each process (controller, switch) is wait-free.
+Each correct controller is wait-free object.
 \end{lemma}
 \begin{proof}
-Thanks to the properties of universal construction which is wait-free.
+Thanks to the properties of universal construction which is wait-free each controller using this algorithm is wait-free.
 \end{proof}
 \paragraph{Sequential compositionality}
 %
