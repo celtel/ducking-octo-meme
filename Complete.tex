@@ -110,11 +110,12 @@ Each controller receives a request from the application(s) and firstly saves in 
 % Short presentation
 Having already presented some main overview on the model's construction, to make it more tangible and realistic we will present 5 abstractions. Since our model is specific only for the second abstractions, let's forget now the \emph{stable topology} property.
 % Short description of each aspect
-\begin{enumerate}
-\item \emph{Network-wide structures:}
-In order to maintain consistent versions of network-wide structures such as topology, traffic statistics and others, one need to process the data from the whole network. In the traditional network vision, all relies on the distributed algorithms acting on the whole network. In general, one need many resources (information) and the main problem is that the switches act in a "blind" way, they can know localy what happens and to get this information they need to communicate with each other and at any time they recieve the message, they are about to recompute their data and broadcast it in the neighbourhood. \\
-In SDN all the knowledge about the state of the entire  system like host locations, link capacities, the traffic matrixes, etc. are stored in \emph{Network Information Base} (NIB). Thus, after same change in the topology of the network, there is a need to recompute some data to maintain the desired structures that keep track of the information. The controllers can reuse the knowledge from NIB. If there is a need for the controllers to communicate with themselves, there is still a necessity to use distributed algorithms. However, the small number of controllers (in comparison to the number of switches) provides faster convergence (in terms of knowledge and regaining the balance in the system after crash) than in the traditional setting.  
-\item \emph{Distributed updates:}
+%\begin{enumerate}
+%\item \emph{Network-wide structures:}
+%In order to maintain consistent versions of network-wide structures such as topology, traffic statistics and others, one need to process the data from the whole network. In the traditional network vision, all relies on the distributed algorithms acting on the whole network. In general, one need many resources (information) and the main problem is that the switches act in a "blind" way, they can know localy what happens and to get this information they need to communicate with each other and at any time they recieve the message, they are about to recompute their data and broadcast it in the neighbourhood. \\
+%In SDN all the knowledge about the state of the entire  system like host locations, link capacities, the traffic matrixes, etc. are stored in \emph{Network Information Base} (NIB). Thus, after same change in the topology of the network, there is a need to recompute some data to maintain the desired structures that keep track of the information. The controllers can reuse the knowledge from NIB. If there is a need for the controllers to communicate with themselves, there is still a necessity to use distributed algorithms. However, the small number of controllers (in comparison to the number of switches) provides faster convergence (in terms of knowledge and regaining the balance in the system after crash) than in the traditional setting.  
+%\item
+ \emph{Distributed updates:}
 %General description
 The SDN \emph{control plane} has to manage the updates on multiple switches in a consistent way so that it would not produce loops, packet's loss or ambigous rules. 
 %Comparison with traditional and SDN
@@ -133,10 +134,10 @@ Any time we want to avoid loops, packet loss or ambiguity, we need some invarian
 The \emph{per-packet} consistent property will be better explained in the abstraction's section.
 
 %It is the problem we tackle in this paper. 
-\item \emph{Modular composition:}
-\item \emph{Virtualization:}
-\item \emph{Formal verification:}
-\end{enumerate}
+%\item \emph{Modular composition:}
+%\item \emph{Virtualization:}
+%\item \emph{Formal verification:}
+%\end{enumerate}
 
 % Different implementation variants in related works and their advantages and disadvantages
 % Different abstractions of SDN and a short description of them
@@ -328,7 +329,7 @@ The algorithm for each process $p_i$ proposing some value to be chosen:
   \end{algorithmic}
 \end{algorithm}
 \\
-\subparagraph{Comment\ref{Universal}.1 :} here we abuse a bit the notation, because the elements of both lists has some different fields. However, we can identify the same elements on both lists thanks to the process' $id$, the proposed value and the $prod$ field.\\
+\subparagraph{Comment\ref{Universal}.1 :} here we abuse a bit the notation, because the elements of both lists has some different fields. However, we can identify the same elements on both lists thanks to the process' $id$, the proposed value and the $prod$ field.
 \subparagraph{Comment\ref{Universal}.2 :} \texttt{Success} happens when the proposed value(s) in $toBeLinearized$ won the consensus.
 
 Briefly, when the process proposes a value, it firstly checks what are the already linearized (accordingly to what it learned) ones among those in the $toBeLinearized$\footnote{what is fully justified, because the process was gathering the informations about both lists from others, but it did not updated the $toBeLinearized$ one using the $linearized$}. It sends local lists to all processes to make them aware about the change in the system. The thing is that it does not have to await them to answer, but dierctly sends its proposition to some instance of the consensus object. It resends it to the next instances until, either it or other process has put this proposition in some object. The latter can happen thanks to the Line 3, when other processes learn about the new request.
@@ -578,7 +579,7 @@ The implementation would be construct a priori a set of \emph{match fields} so t
 Other useful assumptions for the model for theoretical proofs, when time tends to infinity:
 \begin{enumerate}
 \item Every correct process receives infinitely many requests
-\item The EPFD sends also the current $status$ of a suspected controller. The $status$ is are the local variables a controller has.
+\item The EPFD sends also the current $status$ of a suspected controller. The $status$ is described by the local variables a controller has.
 \item infinitely many times sent messages, from $p$ to $q$ correct controllers, are delivered infinitely many times to $q$. It means also that there exists a message that finally arrives to $q$.
 \end{enumerate}
 
@@ -595,6 +596,7 @@ Suppose that there was there is a conflicting policy $\pi$ installed. It means t
 \begin{remark}
 No matter when a given installation takes effect, it always has to consider previously proposed policies, and thanks to the $count$ function it will not be mistaken.
 \end{remark}
+\paragraph{Progress} Another important question is that to avoid that a request remains unanswered. Suppose that a controller is so slow that it cannot find a consenus instance to put there its $toBeLinearized$ list. It can happen, when a leader $p$ of $\pi$ sends a message and it gets lost. As supposed that at least f+1 messages will be eventually delivered, so at least one correct controller $q$ will update its $toBeLinearized$ list. When $q$ will finally receive its own request, suppose it also happens that it is to slow to find a consensus instance and that from f lost messages the (f+1)$^{th}$ reaches $p$. So they are in deadlock. However, thanks to the heartbeat message (fauilure detection abstraction), it also exchanges its $status$, so that other controllers can also learn its local lists. By this even if $p,q$ remain in a deadlock, some faster (and more lucky) controller will propose its request to some consensus object instance. As by OpenFlow protocol, the flow monitor from a given consensus object informs than the whole control plane about its status change. Eventually $p$ and $q$ learns it and can either procede with installation and answer $ack$ or $nack$ if their policies will not compose.
 \paragraph{Consensus Object Properties}
 \emph{Termination}: Thanks to the OpenFlow protocol, it informs the control plane when there was a decision taken in one instance of the consensus object. 
 \\
@@ -634,16 +636,21 @@ Let's see if $H'$ is sequentially composable. But thanks to the \emph{per-packet
 \end{proof}
 \paragraph{Wait-freedom}
 \begin{lemma}
-Each correct controller is wait-free object.
+Each correct controller is a wait-free object.
 \end{lemma}
 \begin{proof}
 Thanks to the properties of universal construction which is wait-free each controller using this algorithm is wait-free.
 \end{proof}
-\paragraph{Sequential compositionality}
 %
 %
 \section{Conclusion and Future Work}
-\subsection{Tag complexity}
+\paragraph{Tag and version number complexity}
+One of possible optimisations would be to try to limit the number of tags and versions that are used in the system. Observe that each polices installed from C[k] receive $k$ as a tag and some version number $v$ (according to the properties of the software). As $k$ grows, $v$ might also tend to $\infty$. As the memory on a nowadays machines is limited, there is a vital need to bound $k$ and $v$ to minimize their number.
+\paragraph{Optimisations}
+Also to improve is the parallelism in the given algorithms. Maybe even find out other abstract, instead of universal construction, which would guarantee better performance and preserve the sequential compositionality of histories. 
+\paragraph{Data plane}
+Another important improvement would concern the model with changing switch topology, when an unexpected crash on the data plane occurs. Then some points to tackle would be: find some policies to redirect the traffic, get info about the packets that were sent, but not processed by the crashed switch. 
+\paragraph{Traffic} Maybe not directly connected with this field but also interesting would be to design some algorithms optimizing the load. Firstly to detect the overloaded links and to redirect the  flow so that it was balanced globally.
 \bibliographystyle{plain}
 \bibliography{bibtex}
 
