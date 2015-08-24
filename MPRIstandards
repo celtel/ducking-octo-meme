@@ -1,0 +1,715 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{mathtools}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{perpage}
+\usepackage{fullpage}
+\usepackage{amsthm}
+\usepackage{algorithm}% http://ctan.org/pkg/algorithm
+\usepackage{algpseudocode}% http://ctan.org/pkg/algorithmicx
+
+%\usepackage{multicol}
+%\setlength{\columnsep}{1cm}
+\MakePerPage{footnote}
+\DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
+\newtheorem{lemma}{Lemma}
+
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+
+\title{Consensus and Universal Construction for Policy Composition in Distributed SDN Control Planes}
+\author{Jan Celmer, Petr Kuznetsov, INFRES}
+\date{\today}
+\begin{document}
+\maketitle
+\subsection*{General context}
+%De quoi s'agit-il ? 
+Software-Defined Networking (SDN) is a new design of network architecture. The key idea is to separate the network management as a logically centralized \emph{control} plane from the \emph{data plane}, i.e., the switches which take care of the delivery of packets.
+%D'où vient-il ? 
+All this is to enable efficient network management with new simplified system architecture.  
+%Quels sont les travaux déjà accomplis dans ce domaine dans le monde ?
+One of the challenges, that we face in this paper, in SDN is to study distributed updating. For the moment one of proposed high-level solutions that keep the correctness are abstractions of per-packet consistency\cite{Reitblatt:2012:ANU:2342356.2342427} and CPC\cite{CKLS15}. Both of them give the general approach about the necessary abstractions.
+\subsection*{Problem Studied}
+
+%Quelle est la question que vous avez abordée ? 
+We were supposed to solve a problem of concurrent system update requests, so as to chose the new updates which would not introduce ambiguity for forwarding packets comparing them to what was installed before. 
+The goal is to find a correct update composition providing optimal, in terms of time,  handling of non-conflicting concurrent requests.
+%Pourquoi est-elle importante, à quoi cela sert-il d'y répondre ?
+The "positive" answer would give the competitive to the traditional network solution, and probably persuade the engineers to introduce this new technology in the market, as it is simpler and more promising then the current one.
+%Est-ce un nouveau problème ?
+The SDN is about 20 years old, but the branch we tackle in the paper 5, at most 10.
+%Si oui, pourquoi êtes-vous le premier chercheur de l'univers à l'avoir posée ?
+%Si non, pourquoi pensiez-vous pouvoir apporter une contribution originale ?
+As we base our solution on the latest abstracts models, we are likely to pioneer this unknown land and give some overview on the directions to take for other scientists.
+\subsection*{Proposed contributions}
+
+%Qu'avez vous proposé comme solution à cette question ?
+ In this paper we proposed the implementation of the CPC in more complete model of SDN. The implementation was also trying to introduce more parallelism than in the initial system model and CPC.
+%Attention, pas de technique, seulement les grandes idées ! 
+%Soignez particulièrement la description de la démarche \emph{scientifique}.
+We relaxed a bit model from \cite{CKLS15} to gain more concurrency. Next, faced with a need of a common agreement, the universal construction\cite{Herlihy:2008:AMP:1734069} was a suitable solution. However, the need of implementation of consensus object was demanded, so we also provided it via the OpenFlow features and the CAS implementation from\cite{In-band}. We also introduced multi-tagging feature, instead of a single one.
+\subsection*{Arguments supporting their validity}
+
+%Qu'est-ce qui montre que cette solution est une bonne solution ?
+
+%Des expériences, des corollaires ? 
+%Commentez la \emph{robustesse} de votre proposition : 
+%comment la validité de la solution dépend-elle des hypothèses de travail ?
+As the assumptions of the system anticipate faultiness of the system. We tried to put the weakest abstractions possible for the main CPC paradigm. The proofs confirm the validity of the solution and its robustness to deadlocks, link or processes failures, which were taken into account. 
+
+\subsection*{Summary and future work}
+
+%Et après ? En quoi votre approche est-elle générale ? 
+
+%Qu'est-ce que votre contribution a apporté au domaine ? 
+The approach proposed gives, for the best of our knowledge, one of the first or even the first implementations and solutions using the state-of-the-art abstractions.
+%Que faudrait-il faire maintenant ? 
+What is still remaining is to program it and see it in practice. The second thing would be to optimize given algorithms, and propose some other concurrent solutions using CPC abstract. Other promising and logical study would be done without the stable topology assumption for the data plane. Also, for practical reasons, it would be good to reuse tags that for the moment we let tend to infinity.
+%Quelle est la bonne \emph{prochaine} question ?
+Even more general task would be to find weaker abstraction than per-packet consistency and then find out faster solutions. 
+\newpage
+\tableofcontents
+\section{Introduction}
+%let us now expand a bit the description of SDN challenge we face and the model we are placed in. 
+\subsection{ SDN update challenge}
+%high-level description
+The SDN paradigm simplifies the network management and makes easier any software change without need to change the hardware. The easy programmability of the switches is one of best fruits of the SDN. It is achieved thanks to the separation of the \emph{data and control planes}. The logical centralization of the \emph{control plane} is fundamental to this paradigm. 
+% Possible models high-level implementaition of SDN
+This opens opportunities of implmentations of each part in SDN starting with the \emph{data and control planes}.
+% Our model assumptions
+%In this paper we assume 
+% High-level research topics
+There are five main abstractions to make the vision of SDN more realistic\cite{Casado:2014:ASN:2661061.2661063} . In this paper we deal with distributed updates the other will be presented in section 2.\\ 
+Faced with concurrent requests, \emph{i.e.,} demands of installation of new policy updates on the \emph{data plane}  from the applications, the \emph{control plane} has to dynamically decide which updates are consistent with already installed policies.
+\subsection{High-level intuitive model used}
+% Informal pb statement
+The problem considered in this paper is to find a protocole for the \emph{control} and \emph{data planes} that would guarantee the installation of non-conflicting network policies on the \emph{data plane}. 
+% Rough model
+As it was already said the SDN is split in two different independent parts. One of important tasks is to find the implementations of the model which will be robust against the failures, simple, providing high performance of the system in terms of correctness, enabling fast and correct policy update implementation.
+That is why a distributed \emph{control plane} model seems as the most suitable one. In a model with more controllers, there is a place for concurrency, so parallelism and for failure handling. 
+The \emph{data plane} is made of set of switches connected with each other by $links$. We assume that no new switch can join the network, no switch can fail and that the links cannot crash, \emph{i.e.}, the network is \emph{static topologically}. 
+  
+% interface for the app
+The interface we propose for the application is the response of \emph{ack}, if the updated was installed, and \emph{nack}, in case the update was rejected. We also add some information in \emph{reason} field which may contain some useful feedback information for the application about the state of the system. It can also be empty. We leave the implementation to the programmers according to the requirements of the software. This transactional interface is provided thanks to the CPC abstraction.
+%Motivation for this model 
+
+%then be more precise, what are the properties we want to guarantee
+% per-packet consistency
+Also what we want to provide for the system is that not only the application sees the actions performed by the system ($acks$ and $nacks$) as sequential, but also the traffic is affected by new updates in this manner. This is a so-called \emph{per-packet} consistency property\cite{Reitblatt:2012:ANU:2342356.2342427}. The main idea here is ensure that every packet passing through the network will be delivered only using one global policy. Imagine a packet already beeing in the network and while it has not yet been transported to its destination, there is a new update installed in the whole system. Then we want to guarantee that the given packet will not be affected by this new update and that each new entring packet will follow already this new policy. In other words, a packet is never processed by the mixture of two different policy updates.  
+% why the synchronization and where is the problem?
+So again, another problem appearing is how to install the updates in order to keep the \emph{per-packet} consistency.
+%%%  And even more, the model tries to provide sequential 
+%%% compositionality of histories
+ Actually, the solution states that the installation should be performed, firstly, on the \emph{internal ports} (not receiving a packet from the outside of the network) and at the end on the \emph{ingress ports} (connected with outside network). In \cite{Reitblatt:2012:ANU:2342356.2342427} the model is designed for one controller but still it applies to multiple controllers set, too.
+%Motivation to use this model 
+The advantages we gain using this abstract are that  we prevent the occurrence of the loops, packet loss and ambiguity in packet delivery. 
+Also we obtain invariants for the \emph{traces}\footnote{A \emph{trace} of the packet is, intuitively, a sequence of pairs (\texttt{packet\_modif}, switch), showing the path a packet travelled and the modifications the packet went through.} of packets.
+%The distributed updates proposed by the applications confronts us with problems like how to consistently 
+%let us now describe more the CPC problem. 
+More detailed design's description of the SDN is in section 2. 
+
+%\subsection{Motivation }%for the model}
+  
+%Motivation for what? for this: research done/domain and then for the research...
+\subsection{Contributions}
+To develop more concrete model basing on the distributed and failure-prone control plane and the CPC abstract, we have introduced the whole set of abstracts to model like: message-passing, failure detection (both from \cite{Guerraoui:2010:IRD:1951643}), universal construction \cite{Herlihy:2008:AMP:1734069} to implement the CPC, the novelty consensus object implementation using the OpenFlow. All this is put into practice  and work in the SDN, thanks to the OpenFlow specification. We have also introduced the algorithms (in form of pseudo-code) with proofs certifying their correctness, and structures allowing the model to function properly. Furthermore, basing on the SDN model from \cite{CKLS15}, we proposed a slight redefinition of conflict what opened new perspectives to parallelize of concurrently coming requests. We also suggested a new option for implementing the software: multi-tagging, while still maintaining the \emph{per-packet consistency}. By this we diminish a number of operations tending to update the whole system with the latest tag.
+\subsection{Roadmap}
+In section 2, we describe the SDN model in more details and compare it to the traditional network. Section 3 is the formal model of SDN. In Section 4 we state the problem, and which where introduced to handle it correctly. Section 5 serves to introduce other abstractions helping to develop the model. The most important concept is there the consensus object and universal construction which will be used to implement the model solution. The short description of functioning and features of the OpenFlow is in section 6. Algorithms implementing the objects and even some structures necessary for implementation are in section 7. Section 8 contains the proofs of properties. Section 9 is the conclusion and invitation for the future work. The last section are the acknowledgements.
+\section{SDN Model and its Abstractions}
+   Before we will introduce the main problems to tackle in the SDN let us take a brief look on the high-level architecture and new perspectives given by this paradigm.
+%High-level overview   with comaprison to the current
+% internet construction: the modern and older one
+The principal idea, as said before, is to decouple the management of the network from the transporting network. In comparison to the current internet model, where it is the task of routers to count the shortest path from itself to each point in a graph via Dijkstra algorithm. When the situation changes, \emph{e.g.}, the delivery cost between two routers changes, new switch joins the graph, or crashes, then at any change, the \emph{flow tables} the routers have must be recalculated via the communication with its neighbours. So on the high-level, each router being linked with other routers, has the software witch provides the calculation of the stated in advance policies like \emph{shortest-path} or others. To influence load balancing or ,in general, to introduce any other network policy configuration, using some outside program would imply a need in changing the whole underlying hardware. In short, the today's network is very rigid and limited for any policy network updates.
+That is why there comes a question of how to generalize the 
+networks hardware so that it provides more flexibility in 
+installing new forwarding updates, and separate the software 
+managing the flow. It is the crucial idea for SDN paradigm
+ to centralize the management and, thanks to this, enable an
+ easier evolution of the system. 
+Thus, the SDN model is composed of two independent parts:
+ the \emph{data} and \emph{control planes.} Both of them has
+different role. 
+% Role of the data plane
+\paragraph{Data plane}
+The first one is for forwarding the packets according to the specified for them policy rules. The specification is for each type of the packet that enters the network. When entering on an \emph{ingress port} it is marked with a \emph{tag}, processed and the actions are applied. The same thing happens on the \emph{internal ports} until a packet reaches the destination. That's the main task of the \emph{data plane.} What makes it evolving\footnote{The evolution here considers only the change of the policies accordingly to the applications' demands. The evolution is here not about the topology, that we stated stable.} it is the \emph{control plane}. In this model we assume to have the switches that are always \emph{correct, i.e.}, they never fail, and that no switch can join the network. The \emph{data plane} is thus said \emph{topologically stable.}\\
+%Possible complications still present
+To prevent the reader from thinking that it simplifies the model too much, think, please, about still pending question of synchronization of the control plane and proving the consistency of the system when many concurrent and likely to be conflicting (between themselves or with already installed updates) updates arrive at a time. There are still problems to take into account here.\\
+% Role of the control plane
+\paragraph{Control plane} 
+The control plane receives the update requests from the exterior applications and, if the proposed policy is consistent with already installed one, it installs it and acknowledges the application. If the update is not consistent, it conflicts then the request is rejected and a \emph{nack} is send to the application. \\
+% More details about the implementation
+As it was already said the \emph{control plane} is, in our case, a distributed, fault-prone, eventually synchronous system consisting of the entities called \emph{controllers}. Thanks to the communication between themselves and with switches, they can actually collect the knowledge about the actualisations and perform actions maintaining the correctness of the system. 
+%  Motivation for the choice --- maybe not as useful now :)
+
+
+% intuition of the controller's behaviour
+Each controller receives a request from the application(s) and firstly saves it in a local memory, then broadcast the information about a new policy to install, and finally searches to save its proposition on the consensus object. As the construction of the system guarantees\footnote{This property will be proved.} that at some point each policy is "considered"\footnote{What does it mean to be considered by an consensus object will become clear in the section about the consensus object's implementation.} by the consensus it implies the progress of the system. Once a controller learns it's policy has been considered, and if it has gathered also the information about the content of already linearized policies, it can calculate if the  update can be installed  or not, and, respectively to the result, answer the demanding application.  \\
+%\subsection{Abstractions for SDN}
+% Short presentation
+\paragraph{Distributed update}
+Having already presented some main overview on the model's construction, to make it more tangible and realistic we will present one of the abstractions we realize in this project (there are at least five of them \cite{Casado:2014:ASN:2661061.2661063}).
+%5 abstractions. 
+%Since our model is specific only for the second abstractions, 
+Let us forget now the \emph{stable topology} property.
+% Short description of each aspect
+%\begin{enumerate}
+%\item \emph{Network-wide structures:}
+%In order to maintain consistent versions of network-wide structures such as topology, traffic statistics and others, one need to process the data from the whole network. In the traditional network vision, all relies on the distributed algorithms acting on the whole network. In general, one need many resources (information) and the main problem is that the switches act in a "blind" way, they can know localy what happens and to get this information they need to communicate with each other and at any time they recieve the message, they are about to recompute their data and broadcast it in the neighbourhood. \\
+%In SDN all the knowledge about the state of the entire  system like host locations, link capacities, the traffic matrixes, etc. are stored in \emph{Network Information Base} (NIB). Thus, after same change in the topology of the network, there is a need to recompute some data to maintain the desired structures that keep track of the information. The controllers can reuse the knowledge from NIB. If there is a need for the controllers to communicate with themselves, there is still a necessity to use distributed algorithms. However, the small number of controllers (in comparison to the number of switches) provides faster convergence (in terms of knowledge and regaining the balance in the system after crash) than in the traditional setting.  
+%\item
+%General description
+The SDN \emph{control plane} has to manage the updates on multiple switches in a consistent way so that it would not produce loops, packet's loss or ambiguous rules. 
+%Comparison with traditional and SDN
+In traditional networks the consistency is only eventual. That means that, after a change has occurred in the system we only expect that there exists a moment in time since when the system works properly( keeping all the properties). It means that we admit, \emph{e.g.,} that if a switch or link crashes, that during the recovery a packet may traverse the network using partially the policy before and partially the policy after calculation, so the mix of two of them. 
+In SDN we expect from the system the \emph{per-packet consistency}, \emph{i.e.,} no packet is processed by the mixture of two global network configurations. 
+% Why do we need this stornger version?
+The purpose of it is that we want to maintain the invariants such as access control or isolation between the traffic of tenants sharing the network\cite{Casado:2014:ASN:2661061.2661063}.
+%What are the challenges for distribution updates
+% Why is it necessary?
+The distributed updates problem shows more visible in several situations that may possibly happen in the "real-life" networks.
+On the high-level, each change in the policy caused by the necessity of quick reaction like a change in the \emph{data plane's} topology, or just a simple modification of the rules, needs a consultation of the current state of the system and a synchronization among controllers to reach an agreement. To coordinate the operations between controllers, provide the correct roll out of the modifications, and finally to when everything is installed to just "turn-on" the updated network require some effort.
+One of the possible events occurring is when some switch or link crashes, and the \emph{control plane} has to dynamically decide (actually it is the external application which proposes the new update to the control plane) how to reinstall all the network so that there were no rules leading to/by the crashed switch(es)/link(s). 
+Other example is when, thanks to the additional knowledge from the \emph{OpenFlow}, we learn that some parts are overloaded with packets. Thus it will be natural for the administrator to balance the load what implies a change in rules.
+On the other hand, for theoretical reasons, one might want to search out the best policies' configuration while modifying the flow on different ingress ports and observing the possible behaviour of the network.
+Any time we want to avoid loops, packet loss or ambiguity, we need some invariants like \emph{per-packet consistency} to maintain the correctness of the system.
+The \emph{per-packet consistency} property will be better explained in the abstraction's section.
+
+%It is the problem we tackle in this paper. 
+%\item \emph{Modular composition:}
+%\item \emph{Virtualization:}
+%\item \emph{Formal verification:}
+%\end{enumerate}
+
+% Different implementation variants in related works and their advantages and disadvantages
+% Different abstractions of SDN and a short description of them
+% 
+% Motivation
+% What can happen if we don't take care of this part
+% things to consider like: synchronization, consensus
+%
+\section{Definitions in The Model}
+\subsection{Formal model}
+% Short intro motivating the modelisation
+To capture and prove the properties we want to obtain leads us to define a formal model of SDN. \\
+% Explain why 
+% 
+\textbf{The control plane} as already described is composed out of at least n$\geq$2 failure-prone controllers. Each controller can communicate with other controllers, switches and the applications that solicits it. \\
+\textbf{The data plane} we represent as a set of \emph{ports} P and a set of links L $\subseteq P\times P$ as in \cite{Reitblatt:2012:ANU:2342356.2342427}. \\
+We distinguish two types of ports. An \emph{ingress} port is when there is no link to it from inside the network we are in, but from the outside. Otherwise the port is called \emph{internal}. There are also two specific types of ports $\lbrace \textit{World, Drop}\rbrace$. Every internal port is connected to the \emph{Drop} port, what means it that if a packet does not match any rule, or when it is \emph{filtered} by the network it can be dropped. Some ports are connected to \emph{World} port meaning that they can send it outside of the network we model. We describe the packets as a set $\Pi$.\\
+\textbf{Port queues and switch functions} We base here totally on the definitions proposed in the model of \cite{CKLS15}.
+The \emph{state} of the network is characterized by a \emph{port
+  queue} $Q_i$ and a \emph{switch function} $S_i$ associated with
+every port $i$.
+A port queue $Q_i$ is a sequence of packets that are, intuitively, waiting to be processed at port $i$.
+A switch function is a map $S_i:\;\Pi\rightarrow \Pi\times P$,
+that, intuitively, defines how packets in
+the port queue $Q_i$ are to be processed.
+When a packet $\textit{pk}$ is fetched from port queue $Q_i$, the corresponding \emph{located
+  packet}, \emph{i.e.}, a pair $(\textit{pk}',j)=S_i(\textit{pk})$ is computed and the packet $\textit{pk}'$ is placed to the queue $Q_j$.
+
+We represent the switch function at port $i$, $S_i$, as a collection of \emph{rules}. Operationally, a rule consists of a pattern matching on packet header fields and actions such as forwarding, dropping or modifying the packets. We model a rule $r$ as a partial map $r:\Pi\rightarrow \Pi\times P$ that, for each packet $pk$ in its domain $\textit{dom}(r)$, generates a new located packet $r(pk)=(pk',j)$, which results in $pk'$ put in queue $Q_j$ such that $(i,j)\in L$. Disambiguation between rules that have overlapping domains is achieved through priority levels and also thanks to the paths, as discussed below. We assume that every rule matches on a header field called the \emph{tag}, which therefore identifies which rules apply to a given packet. We also assume that the tag is the only part of a packet that can be modified by a rule.\\
+\textbf{Port operations} Each port's state can be read or modified, by adding or deleting the rules, at any time by a controller. This operation is atomic. So again, we base on the model in \cite{CKLS15}, we write formally that a port $i$ supports the operation: $update(i,g)$; where $g$ is a function defined on a set of the rules.
+% we add also a formal definition of a bundle
+ We will also be using a construction called \emph{bundle}. A \emph{bundle} is a sequence of $update(i,g_j)$ seen as one atomic operation. The difference is on the interface level. A bundle is like a set of operations of different kinds, if one of them fails (for example, the function $g_k$ returns false or is "rejected" by a switch), then no operation takes effect on the switch's rules. A controller requesting the bundle is informed about the outcome.\\
+\textbf{Paths and policies}
+Let us look on the data plane as on the graph. Then when a packet is \emph{forwarded} from the ingress port to the \emph{Drop} or \emph{World} port we see it as a path: $\textit{ingress port} = s_1\rightarrow s_2 \rightarrow\ldots\rightarrow s_k = \text{Drop/World.}$ A path is \emph{valid} if it passes through the existing links and does not contain loops. For example, if a port $P_1$ is not connected with $P_2$ and a path $p_1$ contains both of them directly connected, then $p_1$ is not valid. 
+We say that two paths aren't \emph{conflicting} if one of the following situations is satisfied:
+    \begin{enumerate}
+    \item \emph{$path_1$} $\cap$ \emph{$path_2$} = $\emptyset$
+    \item $\exists i,j:path_1(i) = path_2(j), path_1(i+1) = path_2(j+1),\ldots, path_1(end)=path_2(end)$ which means that the paths cross at some moment, but then they remain inseparable until the \emph{endpoint}. So even if the paths actually coincide, they follow the same way from some moment.
+    \end{enumerate}
+    In practice, the endpoints stated are known, so during the verification a controller can actually decide whether to consider two paths as being in conflict or not.
+    The list above is exhaustive and otherwise we say that two paths \emph{conflict}. Note that we do not permit that two paths cross many times even if they have the same endpoint, because it would violate the per-packet consistency property, when it comes to the definition of conflicting policies.\\
+    A policy $\pi$ is characterized by domain($_pi)\subseteq\Pi$, a \emph{priority level}, $pr(\pi)\in\mathbb{N}$ and the set of \emph{valid}, non-conflicting paths. A new policy update does \underline{not} have to be apply for each ingress port. It a relaxation of what is in \cite{CKLS15}, where a policy should contain at least one valid path for each ingress port.
+    
+We say that two policies $\pi_1$ and $\pi_2$ \emph{conflict(or dependent)} if \emph{dom($\pi_1$)} $\cap$ \emph{dom($\pi_2$)} $\neq \emptyset$ \underline{and} pr($\pi_1$)=pr($\pi_2$) \underline{and} their paths conflict. Otherwise they are called \emph{non-conflicting (or independent)}.
+If a packet $pk\in dom(\pi_1) \cap dom(\pi_2)$ and $pr(\pi_1)>pr(\pi_2)$ then $pk$ is processed always by the policy with higher priority. 
+If two policies does not conflict we say that they \emph{compose.} Any update request may effectively take place only when it composes with what was installed before. In an opposite case, an update must be rejected.
+\paragraph{Traffic} Again we use the model from \cite{CKLS15} where the traffic is modelled only using to actions:
+\begin{enumerate}
+\item \emph{inject(pk,j)} : where the packet $pk$ enters the network at $j^{th}$ ingress port, by being added to the end of the queue $Q_j$ becoming $Q_j.pk$
+\item $forward(pk,i,pk',j), j\in P$ : the first element of the queue of the $i^{th}$ port it dequeued from $Q_i$, the actions are applied to $pk$ so that it becomes $pk'$ and it is send through the link to the $j^{th}$ port and enqueued to $Q_j$
+\end{enumerate}
+Thanks to the traffic events we can now define what is a trace. A \emph{trace} is a sequence generated by a packet entering the network denoted as $\rho_{ev,H}$, where $ev = incject(pk,j)$ in a history H. Note that the sequence is made of forward events $forward(pk_i,j_i,pk_{i+1},j_{i+1})$, where $pk_0=pk \textit{ and } j_0=j$, until $j_{i+1} \in\lbrace World, Drop \rbrace$. Then we say that the trace \emph{terminates}.
+We also say that a trace $\rho_{ev,H}$ = $(pk,j),(pk_1,j_1),...$ of $pk$ is \emph{consistent} with a policy $\pi$, if $pk\in dom(\pi)$ and $(j,j_1,...)\in \pi$ \cite{CKLS15}.
+\subsection{Concurrency and sequentiality}
+Dealing with multiple in some sense independent objects which have a common operational area we are faced with a notion of \emph{concurrent object}. A concurrent object is shared by processes. It is equipped with methods each process can invoke. The answer it receives is according to the state of the concurrent object at a time of calling a method. The state of the object after the call (called sometimes \emph{side-effect}) is also known. It is specified in a so-called \emph{sequential documentation.} What interests us here is its \emph{correctness} and \emph{progress}. But what does it mean for a concurrent object to be correct or to progress? Everything depends here on object.
+In our case, the concurrent object will be the CPC abstraction. Receiving the concurrent requests it has to return a response $ack$ or $nack$ stating for \emph{yes} the update will take place, \emph{no} the update was rejected, respectively. Each action, the request and the response and also the traffic will be seen as sequential while maintaining the \emph{per-packet consistency}.
+To be more precise we are obliged to use more formalisms.
+To model the executions and the traffic events we will use \emph{histories}. A history "saves" in its "memory" some considered-by-the-model actions that happened in the system. In our case, the history will be composed of two types of actions: request and  answer to the request (communication between the system and the application), and packet inject events (concerning the traffic). Observe that we are not interested in when will the packet leave the network, but only when it enters.
+We will see the history globally (the actions in the whole network set) and locally $H|p_i$ on each controller.
+We say that a request $r$ \emph{precedes} $r'$ in a history $H$, $r<_Hr'$, if the invocation and response of $r$ are before the invocation of $r'$. Otherwise, we say that the requests are \emph{concurrent}. For the inject traffic event $ev$ we say that it \emph{precedes} (resp., $succeds$) a request $r$ in history H, $ev<_H r$, if $ev$ appears before invocation (resp., after response)  of $r$ in H. If it appears in between, so we do not have neither $ev\nless r$, nor $r\nless ev$, we say that an event $ev$ is concurrent to $r$. Also, two inject events $ev$ and $ev'$ on the same port in H are related by $ev<_Hev'$, if $ev$ \emph{precedes} $ev'$ \cite{CKLS15}.
+We say that a history $H$ is \emph{sequential} if there are no concurrent requests and events. H is \emph{well-formed} if every local controller's history is sequential.
+An important thing to mention is that we assume that each controller accepts a new request only when the previous one was answered\footnote{The possible implementation would be to put the pending requests in a buffer and only "wake" them up when the response to the previous one appears.}. By this, each local history $H|p$ is sequential.
+To be able to compare all actions (or rather the time they appear and evolve in the system), we need not only the partial order introduced, but the total one. We have then to complete the history. A history is \emph{incomplete} if there exits a $p$ such that for $H|p$ a request has not been answered. Otherwise, $H$ is called \emph{complete}. The \emph{completion} of the history is made by adding a response to some request accordigly if it affected a packet (then with an \emph{ack}), or not (then with an \emph{nack}). \\
+To justify why it can happen that a history might be incomplete, consider the situation when the requested policy was successfully installed and it is already applied to some packets, but the controller learns it only when receiving a notification from the data plane. \\
+Two histories $H$ and $H'$ are \emph{equivalent} (not necessarily completed ones) when their local histories are equal, $H|p=H'|p$ and when for all events $ev$, traces $\rho_{ev,H}=\rho_{ev,H'}$.
+A history is said to be \emph{legal} if : the committed (acked) policies are not conflicting and when for every inject event, its trace is consisted with all preceding acked policies \cite{CKLS15}.\\
+Now we are ready to define the \emph{sequential compositionality} or, in other words, \emph{linearizability} of a history. A history $H$ is \emph{sequentially composable} if there exists a legal sequential history $S$:
+\begin{enumerate}
+\item completion of $H$ is equivalent to S
+\item $<_H\subseteq <_S$
+\end{enumerate}
+There might be many $S$ sets equivalent to $H$. The main idea here is to be able to shuffle/reorder some events in a legal way, and to see them as executed atomically one-by-one. More about the implementation  will be in the CPC section.
+\section{Problem Statement}
+%Short introduction
+The following two abstractions are in the very heart of the project. Understanding them is crucial to get the point of the whole model proposed.
+The problem statement to solve is two find an algorithm(s) to implement the distributed update abstract, while keeping the correctness of the system. By the correctness of the system we mean that no installed policy is in conflict with others, as defined. To attain this sureness in a distributed model were introduced the per-packet consistency, to at least guarantee an interface for the application to be able to compare the trace history with actually installed updates. The trace history appeared to be an important tool of reconstruction of histories of installed policies. The next step was to introduce an abstract of CPC which main task was to cover the per-packet consistency and even more to provide the compositionality of concurrent requests by rejecting some of them and other to accept. It turned out that it is one of possible approaches to solve distributed updating. In this paper we continue this way by relaxing the constraints put on the order (by CPC), still maintaining the transactional interface, and even more, we propose the implementation which manages well the concurrency.
+\subsection{Per-packet consistency}
+In this section we would like to present a very important notion to our work : \emph{per-packet} consistency. Before we will state the  definition, let us take a look at an example which will introduce us more into the origins of this abstract.
+Imagine we have a SDN network with switches and already defined some rules that guarantee  access control. It means that some packets after reaching a certain switch are simply denied to be forwarded and are dropped. This is also what was mentioned before as filtering. And now we want to install a new update which will change  the security policy to more strict one. It is not difficult to see that a programmer is then faced to install the updates in an order which will not violate the former security policy. As we cannot do it in one atomic step (at least with yet introduced definitions), so the reconfiguration have to be rolled out one-by-one on each switch. So the problem is with which switch to start and which policy should we install on it. It is absolutely not trivial task.
+To make it easy programmable we want to enable all new incoming configurations to be verified by the programmer using just a simple function. The main achievement of the \cite{Reitblatt:2012:ANU:2342356.2342427} is to construct an abstract that no matter the order to install new rules, it works. Intuitively, this universal mechanism depends on a \emph{tag} that each packet is stamped with on entering the network at ingress port. This version number characterizes the current network configuration and tells the switch which rules should be applied (those carrying latest version and the highest priority). It does not mean that the older rules are forgotten. During the \emph{two-phase update}, that we are going to describe, they also get the latest version tag and they are used according to their domain and the highest priority as stated.\\
+The per-packet consistency provides us with so-called \emph{trace properties} characterizing the paths that a packet is allowed to take \cite{Reitblatt:2012:ANU:2342356.2342427}. 
+% implementation of per-packet consistency
+The implementation consists of two main parts : the \emph{one-touch update} and the \emph{unobservable event}. Both constitute what we call a \emph{two-phase update}. 
+The \emph{one-touch update} stands for an update that with the property that no packet can take a path through the network that reaches an updated (or to-be-updated) part of the switch rule space more than once \cite{Reitblatt:2012:ANU:2342356.2342427}. In other words, we can see it simply as a loop-free property.
+An \emph{unobservable update} is an update that does not affect the set of traces which the packets can produce while traversing the network. It means that if $P$ was the set generated by all types of packets served in the network before the configuration, then after the actualisation, the set generated by the packets $P'=P$.\\ 
+The idea behind is to firstly install the new rules on the internal ports. For the moment, thanks to the tag they have, which is bigger than the current one, the new configuration remains invisible for the packets, and so they follow still the former policy. The second step is to, after installing on each switch a given policy, to activate the new version due to new stamp given to incoming packets on an ingress port. Then the new forwarding rules may be safely applied. 
+%If needed: introduce the formal definitions
+\subsection{CPC abstraction}
+To talk about the \emph{Consistent Policy Composition (CPC)}, let us firstly have a brief look at it origins coming from \emph{Software Transactional Memory (STM)}\cite{Shavit:1995:STM:224964.224987}. A \emph{transaction} is a finite sequence of operations. To be more specific, a transaction is generally used on shared-memory structures and the operations it concerns are \emph{read-write} ones. A software transactional memory is a shared memory to which we can apply a sequence of operations in one atomic step thanks to the usage of transactions.
+The CPC abstraction as its predecessor STM has as a main task to, broadly speaking, order sequentially the incoming concurrent events. More then that, the CPC not only addresses to the policies proposed at a time, but also to the traffic. It means that we can see both of them in the history as linearized. To be more formal we say that the CPC problem is solved if for every history $H$, there exists a completion $H'$ satisfying two properties:
+\begin{enumerate}
+\item \textbf{Consistency:} $H'$ is sequentially composable
+\item \textbf{Termination:} eventually, every correct controller $p$ receiving a request answers with \emph{ack} or \emph{nack} in H
+\end{enumerate}
+From the \emph{sequential compositionality of histories} we will easily deduce the \emph{per-packet consistency.} 
+In this paper we implement the $CPC$ abstract using the consensus objects (also implementing them) from \emph{universal construction}. All is done using the advanced OpenFlow features. 
+%It also guarantees the \emph{all-or-nothing} semantics, which means that if one of the operations in the sequence  is rejected, then the transaction is rejected, too.
+\section{Used Abstractions}
+% Short intro
+To make the controller-controller and controller-switch communication realistic and its implementation feasible we need to introduce different assumptions to the model. The things to consider are the message-passing on both planes, how to detect any crashed controller and how to deal with the recovery. How to implement the CPC is done by the universal construction and followed by consensus object implementation. 
+
+\subsection{Message-passing}
+There are three types of messages: one from outside, and two types inside : controller-controller and controller-switch. We can also discern between \emph{broadcasting} and a \emph{single message}. The former abstraction enables an entity to send a message to "all" from a specified group\footnote{In our case, "all" will refer to controllers, no matter who emits switch or controller.} in just one atomic step. The latter will generally concern controller-switch communication. However, sending FlowMod commands to install, update or delete rules is done also using broadcast. 
+We do not state nothing about the messages originating from outside. When they reach a controller, it starts processing it. For single messages and broadcast, we use the \emph{Best-Effort Broadcast(BEB)} model as proposed in \cite{Guerraoui:2010:IRD:1951643}. We expect a message to be eventually delivered. So after some finite amount of time even if the message was lost (what can happen more than once) it is finally delivered. In the model we propose we could even relax it a bit by saying that at least $f+1$ messages are eventually delivered\footnote{Only when it concerns a correct controller broadcasting a message.}, where $f$ is the maximal number of faulty controllers. 
+%Properties
+The BEB has generally three properties:
+\begin{enumerate}
+\item \emph{Best-effort validity} : if a correct process $p_i$ broadcasts a message $m$ then eventually every correct process $p_j$ receives it
+\item \emph{No creation} : if a message was received by $p_j$ than it was sent by some correct $p_i$
+\item[$2'$] \emph{No duplication} : no message is delivered more than once
+\end{enumerate}
+In fact, we do not need the condition $2'$, which reduces the redundancy, and makes the model more simple, but  inadequate to message loss and possible delivery delays. Indeed, as we are placed in the model where a message $m$ can, because of the congestion on the link, be arbitrarily delayed, then $m$ will be resent. That means, in case of delays \emph{duplication} property, may not hold.
+To sum up, both controller-controller and controller-switch communication hold $validity$ and \emph{no creation} properties.
+If a sender crashes then thanks to the failure detector the control plane learns it and one of the correct controllers will take over.
+Let us keep the notation of BEB for the abstract satisfying 1 and 2. To mean that a process broadcast we will use the $broadcast(arg_1,\ldots,arg_k,type)$ notation, where $arg_i$ are sent arguments and $type\in\lbrace cc,cs\rbrace$, i.e., controller-controller and controller-switch, respectively.
+\subsection{Synchronization and partial synchrony}
+%Time and measuring the time
+$Time$ is one of the most important notions to capture in real (not just theoretical) distributed systems. On its definition and accuracy of measurement depends, in some sense, the local knowledge of an entity about the global status in the considered environment. Furthermore, time counting makes the entities to progress even if, \emph{e.g., }the expected message does not arrive. It is due to the time-out mechanisms which (if there not logical clocks) make the process to take specific operations.
+%What is in the model
+In the model we use a physical time to measure. It means that each controller has a clock. It uses it only to estimate the time for the sent messages. Note that we will not use the local time in global issues, but only in local ones. In case of a delay or crash a process can easily figure out a defect or a reason of lack of response.\\
+%Synchrony and partial synchrony
+By \emph{partial} or \emph{eventual synchrony} we mean that \emph{most of the time}, the physical time bounds are respected \cite{Guerraoui:2010:IRD:1951643}. It is an adequate manner of perceiving the distributed systems in practice. We assume only that after some undetermined \emph{a priori} amount of time the selected assumptions hold. In some sense, we can regard the system as being synchronous most of the time, and otherwise it turns into an  asynchronous one.
+The situations when a time bound is not kept may be caused by, for example, lack of memory on the processing entity, link failure, link congestion.
+\subsection{Failure detector}
+As the examined parts of the system like controllers risk to crash, there is a vital need for their peers and for the correctness of the system in general, to detect the possible failures. The system being partially synchronous may lead to possible mistakes while examination of the possible failure. This is caused by arbitrarily long, but at the same time bounded, delays.
+That is also why the choice of \emph{Eventually Perfect Failure Detector (EPFD)} is the most suitable one. It mainly has two properties after \cite{Guerraoui:2010:IRD:1951643}
+\begin{enumerate}
+\item \emph{Strong completeness :} eventually, every crashed process is permanently suspected by every correct process
+\item  \emph{Eventual Strong accuracy :} eventually, no correct process is suspected by any correct process
+\end{enumerate}
+Already, we can observe three different "opinions" a controller might have about its peer $p$: it is \emph{correct, suspect or crashed.} Only the middle term has to be more elaborated. A process $p$ becomes suspect if the \emph{heartbeat} message has not been delivered within an expected time interval. Then $p$ is suspected by $q$, which is awaiting for the news of $p$, as a possibly crashed process. A delayed message can finally arrive and then $q$ revises its knowledge about the situation of $p$ which was false. As a consequence $q$ enlarges the time-out for $p$'s response.\\
+% What knowldge provides this abstract to the take-over process?
+\textbf{Interface} But still we have to define what kind of help provides the EPFD to the system. Not only it detects detects a crashed process, but we demand another feature, that it delegates the request of a crashed controller to the correct one. This leader\footnote{By \emph{leader} we mean the controller which is in charge of providing the answer to the application of  $ack$ or $nack$, if the requested policy will be installed or not, respectively.} "election" is  very deterministic and do not be deceived, because there is no balloting. Indeed, as EPFD memorizes which processes are crashed, it just chooses the next process' $id_{crashed}+1$ to hand it down the request. So there are just two points the EPFD has to satisfy to keep the system working:
+\begin{enumerate}
+\item learn the policy update requested by the application
+\item learn the progress made by the crashed process 
+\end{enumerate}
+Satisfying these two points will make the new leader correctly progress and finalize the task.
+For the point 1, we make an assumption that there exists a base were are stored the $whereabouts$ of each soliciting application. But why is it justified? Each application using the SDN has to log in and become recognizable by the system. So even it is not specified anywhere in this paper, we are sure that if one day the system will be widely implemented, this functionality is indispensable. Thus, the assumption, here purely theoretical, is just.\\
+For the point 2, after learning the policy to update, new leader does the following:\\
+\begin{algorithm}
+\caption{Recovery or proper termination of processing a request if a process in charge of it crashed}
+\begin{algorithmic}[1]
+\ForAll { C[k]'s that the leader does not have the content in $linearized$}
+	\State \textbf{Read-State} message with specified flow tables\Comment{the flow tables destined for consensus objects are known in advance by every controller}
+\EndFor
+\State broadcast($\pi , id_{crashed}$,?,$cc$)
+\If { any consensus object C[k] responds with $\pi$ and $id$ of the crashed process} 
+	\If { leader$_\pi$ has info from C[0] to C[k] in $linearized$}
+	\State count($\pi,linearized$)
+	\Else { send \textbf{Read-State} to the lacking C[$k'$]'s}
+	\EndIf
+\ElsIf { there was a } { broadcast($\pi,linearized,toBeLinearized,prod,installed,cc$)}
+\Comment{eventually, every correct process }
+\EndIf 
+\State continue as in Line 4 in \emph{universal construction}
+\end{algorithmic}
+\end{algorithm}
+
+\begin{remark}: broadcast$(\textit{policy }\pi, int \textit{ }id,int \textit{ question},cc)$ is a method serving to send a survey in the control plane formed in words: have you received already a message with policy $\pi$ from the controller with id $id_{crashed}$? The asked controller should answer it. If yes (it has already this policy stored in local memory), it (the previous leader) has crashed, and I am the new leader. Change the $id_{crashed}$ to my id $id$ and $prod_{crashed}$ to my $prod$.
+\end{remark}
+\begin{remark}
+Observe that if the line 5 is satisfied, then it means that there the crashed process achieved to broadcast its policy. However, if it is down, there were no other process to be "interested" in installing the $\pi$, if it was composing. That is where the "recovery" algorithm, used by the newly chosen "leader" shows its importance.
+If a new leader is already in charge of processing other request, to hold the sequentiality of the local histories property we put it a queue, so as if it received new request. When we will analyse the global history it will not violate the the precedence relation. Indeed, imagine situations:
+\begin{enumerate}
+\item $p$, the crashed process put $\pi$ in some consensus object.
+\item $\pi$ took effect on the traffic, but the application was not answered.
+\end{enumerate}
+In the second point, the new leader $q$ should just send a response on the behalf of the crashed controller. Then when completing the histories we can add to $H|p$ the $ack(\pi)$, and the new leader does not note anything in its history. However it sends a report for the internal software usage.\\
+In the first point the software programmer has to options, act as above, or as if $q$ received a new request. In the latter case $H|p$ can be completed with a $nack$, during $H$ completion.
+\end{remark}
+\subsection{Consensus object and universal construction}
+%Set off with a short intro
+The universal construction was originally proposed by Herlihy and can be also found in \cite{Herlihy:2008:AMP:1734069}. However, before describing what the universal construction is about, let us have a brief overview on the consensus object. The consensus is a sort of a common agreement between objects on, for example, what value to chose.
+The consensus abstraction is characterized with four properties according to \cite{Guerraoui:2010:IRD:1951643}.
+\begin{enumerate}
+\item \emph{Termination :} every correct process finally decides value
+\item \emph{Validity :} the decided value was proposed by some process
+\item \emph{Integrity :} the decision is only taken once
+\item \emph{Agreement :} every correct process takes the same decision
+\end{enumerate}
+It is a complete description of what properties we guarantee while referring to the consensus object. The implementation will be presented later.
+
+To continue let us introduce some definitions. A method is \emph{wait-free} if: when called, its execution is finished in a finite number of steps. An object is \emph{wait-free} if each method it contains is wait-free. 
+It is not always possible to solve a consensus in a wait-free manner. However, there exist some classes of objects called \emph{universal} where it is feasible. It means that one can construct a wait-free linearizable implementation of any concurrent object using the objects from this class. It is a powerful generic tool which will help us to implement the CPC abstraction using the consensus objects.  
+On the high-level the universal construction serves for solving the consensus in a wait-free manner with arbitrarily many processes. The one we consider here has also an additional property which is that at some point any value will be present in some instance of the consensus object.\\
+Each process possesses the following local variables: $prod,k\in\mathbb{N}$, where $prod$ is the number of values proposed by the process and $k$ the latest consensus instance used; $linearized=(v_1,r_{i_1},id_1,prod_1),(v_2,r_{i_2},id_2,prod_2),...,$ where $v_k$ stands for the agreed on value; $r_{i_k}$ is the round number; $installed$ is the list of the updates that have been linearized and installed (on the data plane) ;$id$ is the number for the identifier of the demanding process; $prod$ is the number of values, set initially to zero, a given process has proposed\footnote{Remark that there can be more then one decided value for each round; secondly, we can and will add more fields for each element on the list in the exact implementation, but in this paper, for the reasons of simplicity we leave it in simplified form.}; then the $linearized$ list is storing already decided by all processes former values; $toBeLinearized = (v_1,id_1),(v_2,id_2),\ldots$, a list storing the values proposed by other processes, but still waiting to be agreed on. By $C[k]$ we mean the $k^{th}$ consensus object's instance. \\
+The algorithm for each process $p_i$ proposing some value to be chosen is:
+\begin{algorithm}
+  \caption{Universal Construction}\label{Universal}
+  \begin{algorithmic}[1]
+   %\Procedure{Universal Construction}{}
+   \State add $(v_k,id_{p_i})$ to $toBeLinearized$
+   \State $toBeLinearized$ = $toBeLinearized - Linearized$\Comment{ref.Com1}
+   \State $broadcast(installed,linearized, toBeLinearized,k,cc)$
+   	\Repeat
+   		\State $response$ = C[++k].propose($toBeLinearized$)
+   		\State $linearized$ = $responses.linearized$
+   	\Until{C[k] returns \texttt{Success}}\Comment{ref.Com2}
+   	\State $++prod$
+   %\EndProcedure
+  \end{algorithmic}
+\end{algorithm}
+\\
+\subparagraph{Comment\ref{Universal}.1 :} here we abuse a bit the notation, because the elements of both lists has some different fields. However, we can identify the same elements on both lists thanks to the process' $id$, the proposed value and the $prod$ field.
+\subparagraph{Comment\ref{Universal}.2 :} \texttt{Success} happens when the proposed value(s) in $toBeLinearized$ won the consensus.
+
+Briefly, when the process proposes a value, it firstly checks what are the already linearized (accordingly to what it learned) ones among those in the $toBeLinearized$\footnote{What is fully justified, because the process was gathering the informations about both lists from others, but it did not updated the $toBeLinearized$ one using the $linearized$.}. It sends local lists to all processes to make them aware about the change in the system. The thing is that it does not have to await them to answer, but directly sends its proposition to some instance of the consensus object. It resends it to the next instances until, either it or other process has put this proposition in some object. The latter can happen thanks to the Line 3, when other processes learn about the new request.
+It is to add that each process (controller) is in some sense passive. It gathers the information and updates its local variables while others work. The knowledge it get is received thanks to $broadcast(installed,linearized,toBeLinearized,k,cc)$. Thus simple housekeeping update operations, permits a process to see some part of evolution of the system. Then once it is requested it launches the universal construction algorithm and actively acts in the system.
+\subsection{Compare and swap}
+\emph{Compare And Swap(old, new)}(CAS) is a very common synchronization operation. It works as follows: when called it verifies if the \emph{register}, a read-write memory location, has the value equal to $old$. If yes, it overwrites it with new value $new$, otherwise no action is taken and the method returns the value stored in the register. Other way of specification is to say that if the method has overwritten the value, it returns $true$. Otherwise, it returns $false$.
+When implementing CAS in the OpenFlow for both above specifications one can use as in \cite{In-band}, where all the technical details are presented. We employ only the fact that there exits CAS implementation.
+
+%\section{Interfaces}
+%
+%\subsection{Message-passing}
+%\subsection{Failure detectors}
+%\subsection{CPC abstraction}
+%\subsection{Universal construction}
+%
+\section{OpenFlow 1.4.}
+% Motivate the OpenFlow utility
+The \emph{OpenFlow} is the specification used for the switch. Furthermore, it gives the formal specification of a communication protocol between switches and controllers. In this section we describe the certain features of this paradigm used to outline the main points defined in the mathematical model. The object here is to get more insight about the mechanisms used in implementations. Furthermore, we state some formal requirements for the system using the OpenFlow.
+%To get a simpler and clearer vision of this model we propose a more mathematical approach to describe it.
+% Try to describe the features it has and that you use in this paper
+\subparagraph{Switch architecture and functioning} Each switch consists of one or more \emph{flow tables}\footnote{In our model we require at least two flow tables} and a \emph{group table.}, which perform packet lookups and forwarding, and an \emph{OpenFlow channel} to an external controller\cite{OpenFlow}. Keep in mind that the OpenFlow does not specify the controller's architecture, but only the switch components. 
+Each switch possess a set of ports: logical: high-level abstracts, that may use not OpenFlow methods; physical: corresponding the hardware interface ;and \texttt{Local} reserved port if supported. 
+\subparagraph{Flow Tables} Flow table is a collection of \emph{flow entries}. Each flow entry is made of \emph{math field}, \emph{counters} and \emph{instructions}. When a packet enters to the switch via \emph{ingress port}, it is processed (\emph{pipeline processing}) and it quits through the \emph{output port}.
+To know how to process a given packet it is matched against the \emph{match field}, starting with the first table and the first flow entry. Thus a flow table cannot be empty. It matches if the values defined in a flow entry match fields, then the corresponding instructions are applied. They modify the \emph{action} of a packet, or can also modify pipeline processing. When the packet finally passed through all flow tables, the actions can be applied to a packet, and it is dropped or forwarded. 
+\subparagraph{Controller-Switch Communication} There are three main types of messages supported by the OpenFlow: \emph{controller-to-switch, asynchronous} and \emph{symmetric}
+The first one is initiated by the controller. There are several kinds this type of messages. We use generally two: \textbf{Read-State}, to lookup the current status of switch, its flow tables, counters, etc... ; \textbf{Modify-State} to add, delete or modify the given rules (flow entries).
+The asynchronous messages are sent by switch to the controller. It happens when the packet enters, leaves or the switch status changes.  The symmetrical messages are sent in either direction. They serve while setting up the connection or to echo the liveness of controller/switch. 
+\subparagraph{Flow Monitor}  When establishing the connection a controller can ask a set of switches to put the \emph{flow monitoring}. It works on the set of flow entries. Any change in a monitored table is tracked, the switch sends the report to a controller.This feature is activated when sending 
+\texttt{OFPMP\_FLOW\_MONITOR} multi-part request.  
+\subparagraph{Bundle} It is a sequence of OpenFlow commands send by a controller, applied as a single operation. It is a very convenient tool for parllelizing. If one of the given operations from the sequence returns an error, then the whole bundle message is rejected, and none of the operations\footnote{Even those, from the bundle, which were accepted.} takes effect. 
+%Short comment
+Thanks to the bundle feature, it is possible in the model to provide a transactional interface.
+%\subparagraph{Bundle Mathematical Model}
+
+\section{Algorithms and Pseudo-code}
+
+% Write a plain pseudocode
+% show methods + which models they use + short analysis of 
+%  -high-level algorithm for policy serilaization, based on the universal construction using consensus objects
+%
+An algorithm serializing policies for each controller recieving a request is already the one introduced with universal construction.
+The algorithm for receiving a controller-controller message from $p$, the leader of new to-install-update:
+\begin{algorithm}
+\caption{Controller-controller broadcast reception}\label{BroadcastCC}
+  \begin{algorithmic}[1]
+    \Procedure{broadcast}{$linearized_p,toBeLinearized_p, installed_p, k_p,prod_p,cc$}
+    \If {$k<k_p$} $k=k_p$
+    \EndIf
+    \If {$linearized\subseteq linearized_p$} $linearized = linearized_p$
+    \EndIf
+    \State $toBeLinearized.appendOrder(toBeLinearized_p-linearized)$
+    \State $installed$=$installed.appendOrder(installed_p-installed)$
+    \EndProcedure
+  \end{algorithmic}
+\end{algorithm}
+\begin{remark}
+As $linearized$ are from common agreement, line 3, the only situation can appear is that one of them is the sublist of the other.
+\end{remark}
+%A controller receiving this kind of message remains passive. It means that it undertakes only the housekeeping actions. It is on the contrary to the controller which receives an update demand from the application and takes the adequate operations to respond it.
+Note that we use here a method $appendOrder(\textit{list } l)$. We want this method to simply append a $l$ list and order it according to the lexicographical order introduced in the next section.
+%\begin{enumerate}
+%\item add request to the list \emph{notLinearized}
+%\item broadcast$(notLinearized, linearized,k,prod)$
+%\item to the \emph{data plane} to C[k+1] send(\emph{notLinearized})
+%\item wait for the response from C[k'] \footnote{ we'll implement later what does the C[k+1] if it was already used for a different consensus}
+%\end{enumerate}
+%
+
+%
+\subsection{Lexicographical order}
+To have a simple mechanism of a deterministic sort of the policies in the object it will be stored in, we use a lexicographical order.
+% The exact definition
+It is defined as follows:\\
+$(nb_{acc}, id_1 )<(nb_{acc'}, id_2)$  \textbf{iff}  $nb_{acc} < nb_{acc}'  $ \emph{or} $(nb_{acc} = nb_{acc}'$ and $id_1<id_2)$, where $nb_{acc}$ means the number of already installed policies by the controller with id = $id_k$.\\
+This definition is used locally by every leader controller to sort the vector $toBeLinearized$ and send to the data plane. When the receiving object was empty, it saves the list in its \emph{flow tables}. The switch, due to the \emph{OpenFlow} protocol, when its status changes, sends the notification to the control plane, but it is not its responsibility to guarantee that all controllers receive the message\footnote{Even if there is a flow monitor set on a given table.}. It can be solicited by the controller proposing to resend the answer, but otherwise it does not take any action providing the delivery. Because we assumed in the model the loss of messages it turns out that it might be only the leader which eventually learns about the status change.
+% What if a controller goes down and any other controller did not learn about the change of the status?
+If it happens that a leader$\pi$ goes down and none of the control plane learns about the change status in the solicited switch, thanks to the $EPFD$ new leader\footnote{The next correct controller, \emph{i.e.,} repeat: (controller $c$ with $id_{crashed}+1$ $mod(n)$ = leader) until (c is correct). } is elected.
+% Recovery after the unexpected failure; !!!!!!!!!!!!!Write a pseudocode too!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+The new leader has two main blocks to complete. The first one is to explore what did the previous leader and continue the interrupted protocol by finally providing a correct $ack$ or $nack$ answer to the application. The recovery algorithm was already described in section about \emph{Failure Detection}. \\
+ 
+ By interaction within the control plane, a controller can learn about the changes applied on a switch and update its local variables. Furthermore, once the leader$_\pi$, on the \emph{control plane} receives the notifications from C[0] to some C[k], it can easily count what should be installed.%%%%%%%%%%%%%%%%%%%%Explain how it counts %%%%%%%%%%%%%
+To see how it is done we have to complete a bit the definition of the lexicographical order, which is now regarded on the whole set of consensus objects, and not just locally as before:
+$(k,prod,id)<(k',prod',id') \Leftrightarrow $
+\begin{enumerate}
+\item $k<k'$ or if $k=k'$ then if
+\item $prod<prod'$ or if $prod=prod'$ then if
+\item $id<id'$
+\end{enumerate}
+Where $k$ is the identifier of the consensus object, $prod$ the number of policies proposed by the controller with identifier $id$. The definition is correct because each controller has different id and two updates proposed from the same controller can not be placed in the same object, because we assumed the controllers to work sequentially,\emph{i.e.,} accept next update proposition only when the latter has been already completed (with $ack$ or $nack$).
+%
+%?????????????????? What happens if there are redundant policies in
+%?????????????????? the next consensus objects?
+\subsection{Consensus object implementation}
+How then to implement a \emph{consensus object} in \emph{OpenFlow} ? \\
+For each switch, for this model we $impose$ that there were at least two \emph{flow tables}. The enumeration of the \emph{flow tables} starts with zero. Depending on the system requirements we can set on each switch,by default, k \emph{flow tables} where we will put the consensus objects. For simplicity, we assume here two things. \emph{Firstly,} on each switch there is the same number of \emph{consensus objects}. Remark that we can easily avoid this assumption by the primitive which informs the \emph{control plane} about the total number of consensus objects in each switch. This can easily be done using the \emph{OpenFlow} protocol controller-to-switch messages of type \textbf{Read-state}. It is for the reasons of simplicity we omit this case. \emph{Secondly,} we assume that once all of the \emph{consensus objects} are full, the system informs about it the \emph{control plane} which:
+\begin{enumerate}
+\item stores all the requests received in the meantime in a buffer or local memory
+\item each controller sends a bundle message requesting the deletion of rules in \emph{flow tables} being implemented as a \emph{consensus} object\footnote{So as not to broadcast the message in a total disorder there are two ways of implementation:
+\begin{enumerate}
+\item only one controller takes care of it and once it finishes, it broadcast a message in the \emph{control plane} about the termination of "cleaning"
+\item each controller has some predefined group of switches to "clean" and once it finishes it broadcasts the termination message
+\end{enumerate}
+In both cases, if a controller goes down, thanks to the \emph{failure detector} the switch with \emph{id+1 mod n}, where n is the number of controllers, takes this task over.}
+\item restarts only when all correct controllers learn about the "cleaning" in the \emph{data plane}. 
+\end{enumerate}
+Now we can describe the implementation of the \emph{consensus objects} on the \emph{data plane}. On each switch the \emph{consensus objects} are implemented in flow tables from 0 to k-1.
+%- an implementation of consensus objects in Openflow
+\begin{algorithm}
+  \caption{Flow Table Initialization}\label{FTInit}
+  \begin{algorithmic}[1]
+      \For{\texttt{tables 0 to k-1}}
+        \State Match field $\gets$ ANY
+        \State $priority\gets\infty$
+        \State Instructions$\gets$ Goto-Table $k$
+      \EndFor
+  \end{algorithmic}
+\end{algorithm}
+First remark is that the fields: \emph{counters, time-outs} and \emph{cookies} are set to default values. In fact we won't use them, but all we need is to define the tables correctly according to the \emph{OpenFlow} specification. Secondly, let us explain the choice of the parameters. The \emph{match field} is matched against a packet. If the packet matches the flow entry, the highest priority is chosen and the prescribed instructions and actions take effect at the and of pipeline processing. In our case, the first flow entry $e$ wildcards the packets. It means that the \emph{match field} matches each packet. The priority is set to $\infty$, because otherwise, when the consensus object is filled with new to-be-installed updates, then there might exits a flow entry also wildcarding all packets, but with priority greater then we specify by default for $e$. It means that if there comes a packet matching to both flow entries (the default one $e$ and the second one with higher priority), then a packet would be processed by the to-be-updated policy violating the \emph{per-packet} consistency property. More than that, a packet might be processed, therefore, according to not yet installed forwarding path.
+By setting the priority to $\infty$ the OpenFlow protocol ensures, that the rules contained in a consensus object flow tables are invisible for any packet, and therefore do not affect it. It is due to the $Goto-table$ instruction.
+Apart from this, we think that programming the $\infty$ value would not cause any problems to programmers. 
+%those talbes, or rather their \emph{flow entries} would be considered as \emph{table-miss} entries. In general, \emph{table-miss} flow entires specifies how to process the unmatched packets by any other flow entries before. And it matches ANY packet and its priority is set to 0. It also contains different features then other flow entires\footnote{for more detailed description ref. \emph{OpenFlow} spec}. All the tables are filled out in the same manner for simplicity. When we will use the \emph{compare(addr,old)} abstract to implement the CAS on them, so as to set the \emph{old}, \emph{i.e.}, the expected value of the flow entry with those data.
+\\
+% explain in more details how the consensus object works
+Let us look more closely how to exploit the advantages obtained by using this construction.
+Firstly, a controller creates a bundle with its specific $id$, wraps the operations to perform and ends with a commit message. After pre-validating a bundle so as to avoid most of the errors it sends it to a given \emph{consensus object.} How is constructed our bundle? The operations it contains are the following: $\lbrace CAS(addr,old,new), write(addr_1, k_1),\ldots, write(addr_m, k_m)\rbrace$. The \emph{write} operations will contain all the update rules specified by the demanded update. To keep a desired order we impose that the 
+\emph{write(addr$_l{_{i_1}}$, k$_{l_{i_1}}$)} to 
+\emph{write(addr$_{l_{i_j}}$, k$_{l_{i_j}}$)} contains only the rules from the i$^{th}$ policy update.
+  
+%- an algorithm for installing updates: what a controller does once it linearized some requests.
+%
+%%% The connection establishment at the beginning of the working of %%% the system
+At the beginning when each controller establishes a connection with each switch in the \emph{data plane} and sets a \emph{flow monitor} on the consensus object flow tables. The \emph{flow monitor} serves to call a controller about the change in a consensus object's content, so in a flow table. Thanks to this mechanism, a controller can learn easily learn about the progress of the system installation and if it is obliged perform installation, it can also learn at each stadium of the protocol how is the installation going on. \\
+When  the switch responds $true$ for the $bundle$, implementing CAS, in one of its  consensus object C[$k$] the leader can, after collecting all $linearized$ from all the consensus objects with index less then $k$, finally proceed with installation.\\
+Here we propose an intuitive description. The roll-out of the installation: each leader having gathered the notifications from C[0] to C[k], for some k where its policy $\pi$ is placed, can easily count if it should continue with installation or not. To proceed with installation it simply broadcasts the $FlowMod$ commands using bundle construct and expects for the answer. To complete the second-phase it sends the new stamp request to a given subset of ingress ports. Finally it responds the application of positive execution result.\\
+%It is possible, in reality, that the communication band is overloaded, but the OpenFlow already knows how to acknowledge the controllers about it. On the other hand, we also dispose of the communication between the controllers, so that even in case of congestion on the bandwidth between the two planes the common knowledge about if the consensus object's state is accessible for the slower(backwarded) controllers, and can be caught up with.
+%By the communication on the control plane each controller would get to know with more accuracy the first free consensus object's number.
+Now we are ready to see the what does the controller once it has learned about the \emph{linearized} set from the consensus objects from 0 to some $k'$, where the controller's request is in come C[$k$] with $k<k'$:
+\begin{algorithm}
+ \caption{Installation ($\pi\in$C[k])}
+ \begin{algorithmic}[1]\label{Installation}
+ %\ForAll{$s$ switches that are influenced by $\pi$}
+ %	\State send \textbf{Read-State} message
+ %\EndFor
+ %\Comment{once the expected answers have arrived}
+ \State inst $\gets$ $count(linearized, \pi)$
+ \If { inst = true}
+ 	\State $linearized\gets \pi$
+ 	\ForAll{s, switch concerned by the update}  send $installationRequest(rules(s))$
+ 	\EndFor
+ 	\State Await confirmation of the correct installation
+ 	\State When received, $\forall i\in\pi$, ingress port send new version-tag-stamping request and await confirmation
+ 	\State send $ack$ to the application
+ \Else { send $nack(request, reason)$ to the application}
+ \EndIf
+ \end{algorithmic}
+\end{algorithm}
+Firstly, we need to know if at least given policy composes. It is examined by $count()$ function and the result is stored in $inst$ variable. If it composes the controller $p$ is supposed to send a bundle with $FlowMod$ commands to the corresponding switches, what is in line 4, under the name of $installationRequest()$ containing the set of rules $rules(s)$ for a given switch $s$. In line 6, awaiting, does not mean that $q$ is petrified, because it still receives other messages from the system. Then, line7, to complete the two-phase update.
+\\The elements of the list should have the following structure:\\
+struct \texttt{elem\_list}$\lbrace$
+\begin{enumerate}
+\item int instSucceded;
+\item int id;
+\item policy pu;
+\item boolean inst;
+\item int consObjNb;
+\end{enumerate}
+$\rbrace ;$\\
+For the reasons of the specific software demands the \texttt{elem\_list} can contain other fields, but those five are mandatory.\\
+% Short description of the structure
+$\bullet instSucceded$ integer is assigned with its leader's $prod$ number. Its role is to say how many installation does the leader executed before. \\
+$\bullet id$ is just the leader's $id$.\\
+$\bullet pu$ field is the $policy$ structure, storing the policy actually proposed. The three above fields are assigned already when the controller receives the request.\\
+$\bullet inst$ says if the policy can be or was already installed.\\
+$\bullet$ $consObjNb$ is the consensus object, where $pu$ is stored.\\
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% define policy structure!!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{algorithm}
+\caption{Counts if a given policy will be installed or not}
+\begin{algorithmic}[1]
+	\Procedure{count}{\texttt{elem\_list}[] list,\texttt{elem\_list} element}
+	\If { $element \in$ list}
+		\State k $\gets$ take index of $element$ in the list
+	\Else { send $error$:"no such element in the list"}	
+	\EndIf
+	\If { compose(installed, list[i])}\Comment{$installed$ is a list of \texttt{elem\_list}}
+		\State last$\gets$ the latest element from $installed$
+		\State last$_{idx}\gets$ index of last in $list$
+		\State installedLocal$\gets installed$
+		\For { i from last$_{idx}$ to end of $list$}
+			\If{ compose(list[++i], installedLocal)}
+				\State list[i].inst = $True$
+				\State installedLocal.append(list[i])
+			\Else { list[i].inst = false}			
+			\EndIf	
+		\EndFor		
+		%\State list[i].instSucceded ++, not necessary
+		%\State list[i].inst = true
+		%\State $installed$.append(list[i])\Comment{if it was not yet appended} 
+		\State\Return list[k].inst
+	\EndIf			
+	\State\Return $False$
+	\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+\begin{remark}
+Here we suppose that $installed$ is really a subsequence list of $linearized$. Note that even if the consensus objects give a unique agreement, the installation is performed according to the time a controller performs all the necessary actions. Thus, the order on both lists can differ. However, it is possible to reorder $installed$ so that it becomes a subsequence of $linearized$.
+\end{remark} 
+% --count description
+The function returns $True$ when the policy from $element$ can be installed not violating the compositionality of the policies, otherwise it returns $False$. Lines 2 and 3 are just to ensure that the to-be-installed policy is in the list and to take its position. In the $for$ loop if $\pi$ does not compose with what is already installed, it is rejected. When it composes with $installed$, then the function verifies if it also composes with the updates stored before it on consensus instances. We know the $before$ policies thanks to the lexicographical order.Once all elements from the $list$ are checked whether they conflict or not, the corresponding fields in their structure are initialized. Finally, the "compatibility" field of our $element$ is checked its content returned. 
+Note that, the $count()$ function provides the leader with information of to-be-installed policies, which can be shared with other controllers when passing messages. 
+%count description--
+Remark the \emph{list} is sorted according to the \emph{lexicographical order} defined for policies contained in \emph{consensus objects.} \\
+
+%--compose description
+compose(\texttt{elem\_list}[] installed,\texttt{elem\_list} policy):
+\begin{enumerate}
+\item if policy conflicts\footnote{The conflict's definition is in chapter definitions. The implementation is according to the criteria found there.} with installed then return false
+\item else return true
+\end{enumerate} 
+The $compose$ function should not pose any problems for programmers in implementation with respect to the $conflict$ definitions proposed yet.
+%compose description--
+\subsection{Tagging}
+% What's a tag and what does it serves for
+A packet we regard here is made of two main parts: the $header$ and the $data$ fields. Only the former one called also the $tag$ can be modified by applying to it a set of actions specified by flow entries during the pipeline processing. The latter is as the name indicates, to keep the data to deliver and of which the content is left untouched.
+% how use them to have per-packet const
+In this model the tag contains also the field showing the version of the configuration of the system a packet should follow. Thanks to the per-packet consistency, there is a possible "cooperation" between the tag and rules.
+% More details about the cooperation due to stamping and flow endtires
+How is it done? When a packet enters the network at the ingress port it is stamped with a current policy tag. At each internal port, due to the per-packet consistency, any switch is already "acknowledged" with the new tag and knows which new rules to apply not forgetting the prior ones. In implementation of the installation it can be seen as a new \emph{match field} given for each flow entry, so that it matches still to possible older versions of the packets (so it does not violate the consistency, that is, the trace left by a packet can be identified with a certain composition of policies and the mix of two or more different policy compositions). 
+A new tag $k$ is imposed in the system when all composable policies from the C[$k$] consensus object were successfully installed.\\
+%%The implementation of the installation of any composable policy $\pi$ is a bundle of $FlowMod$ commands, more precisely the set of \textbf{Modify-State} messages send to the subset of $\pi$-influenced switches. \\
+% multitagging and how it holds the properties?
+The novelty of the model here is that we admit that there were multiple tags in the system. Indeed, the model proposed in \cite{Reitblatt:2012:ANU:2342356.2342427} provides that each switch from the network after the $two-phase$ installation will be configured to the next (newest) tag version. In our case, the system is treated more "locally". By this we mean, that if new policy is successfully installed on some subset $S$ of switches, it is only $S$ to have the new tag version. Observe that this approach does not violate the $consistency$ condition, because each packet will be still processed by only one composition of policies. Furthermore, suppose that a packet starting from the ingress port with a prior tag version reaches a switch with the latest tag (or just newer). To realize this abstraction with multiple tagging a software programmer has two options to chose, on the high-level:
+\begin{enumerate}
+\item $\lbrace$set of the paths generated after installation of $\pi'$ with new version tag in all the system $\rbrace$ = $\lbrace$ set of the paths generated after installation of $\pi'$ with new version tag only on some subset of switches $\rbrace$
+\item let $A$ = $\lbrace$ set of ingress ports $i$ not affected by the update $\rbrace$:\\
+$\bigcup\limits_{i\in A,\textit{with old version tag}} gen(i)\cup\bigcup\limits_{i\notin A, \textit{with new version tag}}gen(i)$
+\end{enumerate}
+The first point implies, that even if there was no change of the version in the whole system (but just in some part of it), it processes the load as if all the switches were affected with the new update version. The latter one considers a possibility for packets stamped with older version tag to be forwarded through the path as before the installation of $\pi'$.\\
+Let us have a short example of the difference. Two ingress ports $i_1,i_2$ connected to a port $k$, and $k$ is connected with to ports $l,m$. The network is configured that each packet entering at $i_2$ goes to $k$ and then to $m$. We want to update $i_1$, that all packets entering there go to $k$ and then to $l$. But it will also affect the packets' traces entering at $i_2$. So after the installation we would have that either each packet entering at $i_2$ does $i_2\rightarrow k\rightarrow l$ (as in 1.) or it may still stick to the former path $i_2\rightarrow k\rightarrow m$. The choice belongs to the software programmers.\\
+Both points are per-packet consistent, because the version does not influence the fact that a packet will be processed with $\pi_1\circ\ldots\pi_k$ or with $\pi_1\circ\ldots\pi_k\circ\pi'$, where $\pi'$ is a new update. However, it impacts packet's $trace$ and so the end-point port, before leaving the system (if a packet was not dropped before). The decision here depends on the system's specification.\\
+The implementation would be construct a priori a set of \emph{match fields} so that one of the two above specified software designs is realized. The bits on each match field would be then set to either match or not the older version tags. In the latter case it follows that on a given switch a packet is processed with an older rule (because it was not deleted, and matches a set of packets in its domain), with older tag. Note that in this paper, for the reasons of simplicity, we allow the tag number to grow to infinity. 
+
+%--do not consider
+%$\forall s$ switch with new update $\forall p,i$ path $p$ originating from not updated ingress port $i$ either:
+%\begin{enumerate}
+%\item do not modify the rules generating the paths, or
+%\item use some refined \emph{match field} construction providing multitag and that the set of paths originated in all $i$ generated to be left unchanged
+%\end{enumerate}
+% do not consider--
+\section{Proofs of the properties}
+Other useful assumptions for the model for theoretical proofs, when time tends to infinity:
+\begin{enumerate}
+\item Every correct process receives infinitely many requests
+\item The EPFD sends, with the $heartbeat$ message, the current $status$ of a suspected controller. The $status$ is described by the local variables a controller has.
+\item infinitely many times sent messages, from $p$ to $q$ correct controllers, are delivered infinitely many times to $q$. It means also that there exists a message that finally arrives to $q$.
+\end{enumerate}
+% Mention properties of which objects!!!!!
+\paragraph{Correcteness} 
+By \emph{system correctness} we mean that no conflicting policy is installed.
+\begin{lemma}\label{Correctness}
+The algorithm \ref{Universal} with proposed implementation of consensus objects is $correct$. 
+\end{lemma}
+\begin{proof}
+Suppose that there was there is a conflicting policy $\pi$ installed.  Line 6 implies that $compose(installed,\pi)$ returned true, so no conflict with already installed policies.
+Remind that $installed\subseteq linearized$, after some permutation of its elements\footnote{Observe that the installation of composable policies can be performed by controllers in any order depending on how fast they are.}, is a sublist\footnotemark of $linearized$. 
+ The $for$ loop 10-16 marks then the element containing $\pi$ as true. It means that having the knowledge from all consensus objects C[0] to C[k]$\ni\pi$, $\pi$ was composing,\emph{i.e.}, was not in conflict with all the preceding polices. Contradiction.
+\footnotetext{A list $l=\lbrace l_i\rbrace$ is a $sublist$ of list $m=\lbrace m_i\rbrace$ if there exists a subsequence $\lbrace m_{k_i}\rbrace$ of elements from $m$: $m_{k_i}=l_i \forall i$, where $\lbrace k_i\rbrace\subseteq\mathbb{N}$. Note that the definition is for finite and infinite sequences.}
+\end{proof}
+\begin{remark}
+No matter when a given installation takes effect, it always has to consider previously proposed policies, and thanks to the $count$ function it will not be mistaken.
+\end{remark}
+\paragraph{Progress} Another important question is that to avoid that a request remains unanswered. Suppose that a controller is so slow that it cannot find a consensus instance to put there its $toBeLinearized$ list. It can happen, when a leader $p$ of $\pi$ sends a message and it gets lost. As supposed that at least f+1 messages will be eventually delivered, so at least one correct controller $q$ will update its $toBeLinearized$ list. When $q$ will finally receive its own request, suppose it also happens that it is to slow to find a consensus instance and that from f lost messages the (f+1)$^{th}$ reaches $p$. So they are in starvation and are blocked to receive new requests. However, thanks to the heartbeat message (failure detection abstraction), it also exchanges its $status$, so that other controllers can also learn its local variables. By this even if $p,q$ remain in a deadlock, some faster (and more lucky) controller will propose its request to some consensus object instance. As by OpenFlow protocol, the flow monitor from a given consensus object informs than the whole control plane about its status change. Eventually $p$ and $q$ learns it and can either proceed with installation and answer $ack$, or $nack$ if their policies will not compose.
+\paragraph{Consensus Object Properties}
+\emph{Termination}: Thanks to the OpenFlow protocol, it informs the control plane when there was a decision taken in one instance of the consensus object. 
+\\
+\emph{Validity}: Follows from the protocol.
+\\
+\emph{Integrity}: When a process (controller) receives a request it searches for some free instance of the consensus object. Thanks to the CAS implementation it is ensured that the decision is taken only once.
+\\
+\emph{Agreement}: As in $integrity$, thanks to the CAS abstract the common agreement on each instance of the consensus object is guaranteed.
+\\
+\emph{Progress}: In fact, this property is particular for our model. By $progress$ as yet said, that eventually every requested policy is put in some consensus object. This is proven in the next paragraph.
+
+\paragraph{CPC}
+Before proving the CPC properties let us prove the following:
+\begin{lemma}\label{per-packet consistency} The proposed construction ensures the \emph{unobservable update} and \emph{one-touch update} properties. As a conclusion the system is \emph{per-packet consistent}.
+\end{lemma}
+\begin{proof}
+By the algorithm 5 (Installation), lines 4-6 and 7 we receive the \emph{unobservable update} and \emph{one-touch update} properties, respectively.
+\end{proof}
+\begin{lemma}
+Given implementation of CPC abstract, it solves the CPC problem:
+\begin{enumerate}
+\item Consistency: \emph{$H'$ is sequentially composable}
+\item Termination: \emph{Eventually, every requested and correct controller answers with} ack or nack
+\end{enumerate}
+Where for every history $H$, $H'$ is its completion.
+\end{lemma}
+\begin{proof}
+Thanks to the lemma \ref{per-packet consistency}, the $H'$ history can guarantee to place all inject events so that the packet traces correspond to a given set of policy compositions, while keeping the "time" order the packets entered the network. According to this, it is than easy to $complete$ the $H$ history so that it corresponds to the set of traces.
+The legality of $H'$ is due to the correctness from lemma \ref{Correctness}. \\
+Let $\lbrace ev_k\rbrace_{k=1,..,n}$, be a sequence of 
+inject events occurred in the history until a given moment. Suppose 
+that we have $ev_1<_H\ldots <_Hev_n$.
+Let $pol(ev)$ be the set of lists of policies composing with the trace left by the packet, where $ev=inject(pk,j)$. Let us define that $pol(ev)\subseteq pol(ev')\Leftrightarrow \forall pc\in pol(ev) \exists pc'\in pol(ev'): pc\subseteq pc',pc$ is a prefix of $pc'$. Now cross out any concurrent with $ev$ policy from $pol(ev_1)$. This will not violate the trace because the "deleted" policy did not took effect. 
+Let us see if $H'$ is sequentially composable. But thanks to the \emph{per-packet consistency} we have that (abusing a bit the notation), $pol(ev_1)<_H<ev_1<\ldots <_H pol(ev_n)<_Hev_n$. To be more precise there exists a sequence of sublists $\lbrace pc_i\rbrace_{i=1,\ldots, n}: pc_1\subseteq\ldots\subseteq pc_n$,  $pc_i$ is already linearized and $pc_1<_H ev_1<_H\ldots <_H pc_n<_H ev_n$. 
+\end{proof}
+%\paragraph{Wait-freedom}
+%\begin{lemma}
+%Each correct controller is a wait-free object.
+%\end{lemma}
+%\begin{proof}
+%Thanks to the properties of universal construction which is wait-free each controller using this algorithm is wait-free.
+%\end{proof}
+\section{Acknowledgements}
+At the end I would like to warmly thank Petr Kuznetsov for all his suggestions for this work, but in general for all this period, for all the interesting discussions, important remarks and a great school of how to understand distributed  computing and clearly present one's thoughts.\\
+Also the incommensurable support was given from the part of my Parents, who accompany me all my life, but it is now that I feel the most their wisdom they wanted to convey me and their, care which, expressed through long conversations, helped me to survive any storm and to become victorious.
+\bibliographystyle{plain}
+\bibliography{bibtex}
+
+%\end{multicols}
+\end{document}
